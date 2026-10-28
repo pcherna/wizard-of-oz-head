@@ -368,12 +368,12 @@ export class Head {
   }
 
   private static async createLabrador(): Promise<Head> {
-    const gltf = await new GLTFLoader().loadAsync('/models/labrador-head.glb');
+    const gltf = await new GLTFLoader().loadAsync('/models/dog.glb');
     let source: THREE.Mesh | null = null;
     gltf.scene.traverse((o) => {
       if (o instanceof THREE.Mesh && !source) source = o;
     });
-    if (!source) throw new Error('No mesh in labrador-head.glb');
+    if (!source) throw new Error('No mesh in dog.glb');
     const { geometry, material } = source as THREE.Mesh;
     const std = material as THREE.MeshStandardMaterial;
     geometry.setAttribute('aJaw', labradorJawWeights(geometry, LABRADOR_RIG.hinge));
