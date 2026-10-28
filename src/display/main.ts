@@ -123,21 +123,53 @@ socket.onMessage = (msg) => {
 const startEl = document.querySelector<HTMLElement>('#start')!;
 const errorEl = document.querySelector<HTMLElement>('#error')!;
 
-async function start() {
+let starting = false;
+
+async function start(byClick: boolean) {
+  if (starting) return;
+  starting = true;
   startEl.hidden = true;
+  let next: Voice | null = null;
   try {
-    voice = await Voice.create(store.value, !demo);
+    next = await Voice.create(store.value, !demo);
+    if (next.ctx.state !== 'running') {
+      throw new Error(byClick ? "The speakers didn't start. Press S and pick the speakers, or check the Mac's sound output." : '');
+    }
+    voice = next;
     sfx = new Sfx(voice.ctx, voice.fxBus);
     // Chrome fires this when the output device fails or disappears.
     voice.ctx.addEventListener('error', () => showError(new Error('Speaker output failed. Pick the speakers again in the setup panel (S).')));
     lipsync = new LipSync(demo ? null : voice.analyser);
-    if (voice.ctx.state !== 'running') throw new Error('Audio is blocked until you click.');
     errorEl.hidden = true;
+    startReason.textContent = '';
   } catch (err) {
-    showError(err);
+    // A context that won't run stays stuck, so throw it away and build a fresh one next click.
+    next?.close();
+    console.error(err);
+    startReason.textContent = explainStartError(err);
     startEl.hidden = false;
+  } finally {
+    starting = false;
   }
   if (!document.fullscreenElement && !params.has('autostart')) document.documentElement.requestFullscreen?.().catch(() => {});
+}
+
+/** Turns a start failure into something the operator can act on. Empty means "just click". */
+function explainStartError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  switch (err.name) {
+    case 'NotAllowedError':
+      return /system/i.test(err.message)
+        ? "macOS is blocking Chrome's microphone. Turn Chrome on in System Settings > Privacy & Security > Microphone, then restart Chrome."
+        : 'Chrome blocked the microphone for this page. Click the icon left of the address, allow Microphone, then click here again.';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return "The chosen mic isn't connected. Press S and pick another mic.";
+    case 'NotReadableError':
+      return 'The mic is busy or failed to start. Reconnect the AirPods, or press S and pick another mic.';
+    default:
+      return err.message;
+  }
 }
 
 function showError(err: unknown) {
@@ -146,14 +178,10 @@ function showError(err: unknown) {
   errorEl.hidden = false;
 }
 
-startEl.addEventListener('click', () => {
-  if (voice) {
-    voice.resume().then((running) => (startEl.hidden = running));
-    return;
-  }
-  start();
-});
-if (params.has('autostart')) start();
+const startReason = document.createElement('small');
+startEl.append(startReason);
+startEl.addEventListener('click', () => start(true));
+if (params.has('autostart')) start(false);
 
 // --- Frame loop ----------------------------------------------------------------
 

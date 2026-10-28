@@ -47,13 +47,26 @@ export class Voice {
   /** With `mic: false` (demo mode) the graph runs for thunder but nothing feeds the voice. */
   static async create(settings: Settings, mic = true): Promise<Voice> {
     const ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: SAMPLE_RATE });
-    await ctx.audioWorklet.addModule(workletUrl);
-    const voice = new Voice(ctx);
-    voice.apply(settings);
-    await voice.setOutput(settings.outputId);
-    if (mic) await voice.setInput(settings.inputId);
-    await voice.resume();
-    return voice;
+    let voice: Voice | null = null;
+    try {
+      await ctx.audioWorklet.addModule(workletUrl);
+      voice = new Voice(ctx);
+      voice.apply(settings);
+      await voice.setOutput(settings.outputId);
+      if (mic) await voice.setInput(settings.inputId);
+      await voice.resume();
+      return voice;
+    } catch (err) {
+      // Release the mic and the context, so the next attempt starts clean.
+      if (voice) voice.close();
+      else ctx.close();
+      throw err;
+    }
+  }
+
+  close() {
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.ctx.close();
   }
 
   /** Without a user gesture (or Chrome's autoplay flag) resume() never settles, so cap the wait. */

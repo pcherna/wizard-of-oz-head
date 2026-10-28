@@ -10,9 +10,12 @@
       #stage { display: block; width: 100vw; height: 100vh; }
       #flash { position: fixed; inset: 0; background: #eef4ff; opacity: 0; pointer-events: none; }
       #start {
-        position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
+        position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px;
+        padding: 16px; cursor: pointer; text-align: center;
         font: 600 28px/1.4 Georgia, serif; color: #6f6; letter-spacing: 0.08em; background: rgba(0, 0, 0, 0.6);
       }
+      #start small { max-width: 44ch; font: 16px/1.5 system-ui, sans-serif; letter-spacing: 0; color: #fdd; }
+      #start small:empty { display: none; }
       #start[hidden], #error[hidden], #setup[hidden] { display: none; }
       #error {
         position: fixed; left: 16px; bottom: 16px; max-width: 60ch; padding: 8px 12px;
