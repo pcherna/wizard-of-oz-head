@@ -15,6 +15,7 @@ const SLIDERS: [NumericKey, string, number, number, number][] = [
   ['headY', 'Head height', -1, 1, 0.01],
   ['headShine', 'Shine', 0, 1, 0.01],
   ['headRim', 'Rim glow', 0, 1.5, 0.01],
+  ['backdrop', 'Organ backdrop', 0, 1.5, 0.01],
 ];
 
 /** One slider per Oz distortion. */

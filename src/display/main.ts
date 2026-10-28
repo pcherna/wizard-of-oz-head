@@ -10,6 +10,7 @@ import { Fire } from './fire';
 import { Steam, STEAM_BURST_SEC } from './steam';
 import { Lightning } from './lightning';
 import { SetupPanel } from './setup-panel';
+import { Backdrop } from './backdrop';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -22,6 +23,9 @@ const store = new SettingsStore();
 const stage = createStage(document.querySelector<HTMLCanvasElement>('#stage')!);
 const fire = new Fire();
 const steam = new Steam();
+const backdrop = new Backdrop();
+backdrop.setBrightness(store.value.backdrop);
+stage.scene.add(backdrop.mesh);
 stage.scene.add(fire.group, steam.points);
 
 let voice: Voice | null = null;
@@ -74,6 +78,7 @@ store.subscribe((changed) => {
   if (changed.headVariant) loadHead(changed.headVariant);
   if (changed.headShine !== undefined) head?.setShine(changed.headShine);
   if (changed.headRim !== undefined) head?.setRimGlow(changed.headRim);
+  if (changed.backdrop !== undefined) backdrop.setBrightness(changed.backdrop);
   if (Object.keys(changed).some((k) => k in OZ_SCULPT_DEFAULTS)) head?.setSculpt(store.value);
   if (changed.headScale !== undefined || changed.headY !== undefined) head?.setPlacement(store.value.headScale, store.value.headY);
   if (changed.inputId !== undefined && !demo) voice?.setInput(changed.inputId).catch(showError);
@@ -192,6 +197,7 @@ function updatePixelScale() {
   steam.setPixelScale(scale);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
   steam.setHalfWidth(Math.tan((camera.fov * Math.PI) / 360) * 5.7 * camera.aspect);
+  backdrop.fit(camera);
 }
 addEventListener('resize', updatePixelScale);
 updatePixelScale();
@@ -216,6 +222,7 @@ function frame(now: number) {
   fire.update(clock, dt, store.value.fireBase);
   steam.update(clock, dt);
   lightning.update(clock);
+  backdrop.update(clock, fire.intensity, lightning.level);
   head?.update(clock, dt, mouth, fire.intensity, lightning.level);
   stage.render();
 
