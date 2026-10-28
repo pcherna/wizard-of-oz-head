@@ -4,6 +4,8 @@ Every year for Halloween night, we do a haunted house in our garage for the kids
 
 A projected green head over a fire, with steam on both sides. A hidden performer talks into a mic. The app lowers the voice, adds a large-hall reverb, and plays it through the room speakers. The jaw follows the processed voice. A presentation clicker or a phone triggers fire flares, steam bursts, and lightning with thunder.
 
+![The Labrador head glowing green over the fire, with steam pipes and the organ backdrop](docs/TheGreatOzzie.jpg)
+
 ## Use of AI Coding Tools
 
 This package was developed using Claude Code and Claude Opus 5.5.
