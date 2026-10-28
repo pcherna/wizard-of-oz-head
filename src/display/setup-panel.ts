@@ -1,6 +1,7 @@
 import { OZ_SCULPT_DEFAULTS, type Settings } from '../config';
 import { listAudioDevices } from '../audio/voice';
 import type { SettingsStore } from '../settings';
+import { CUE_OFF } from '../audio/cue';
 
 type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
 
@@ -41,6 +42,7 @@ export class SetupPanel {
   private readout: HTMLElement;
   private inputSel: HTMLSelectElement;
   private outputSel: HTMLSelectElement;
+  private cueSel: HTMLSelectElement;
   private sliders = new Map<NumericKey, HTMLInputElement>();
   lastKey = '—';
   onTestTone: () => void = () => {};
@@ -55,6 +57,7 @@ export class SetupPanel {
       <label>Mic <select data-k="inputId"></select></label>
       <label>Speakers <select data-k="outputId"></select></label>
       <button class="test-tone">Test speakers</button>
+      <label>Cue tones <select data-k="cueOutputId"></select></label>
       <label>Head <select data-k="headVariant">
         <option value="oz">Oz (sculpted scan)</option>
         <option value="scan">Scan (Lee Perry-Smith)</option>
@@ -77,6 +80,8 @@ export class SetupPanel {
     variantSel.onchange = () => store.update({ headVariant: variantSel.value as Settings['headVariant'] });
     this.inputSel.onchange = () => store.update({ inputId: this.inputSel.value });
     this.outputSel.onchange = () => store.update({ outputId: this.outputSel.value });
+    this.cueSel = this.el.querySelector('[data-k=cueOutputId]')!;
+    this.cueSel.onchange = () => store.update({ cueOutputId: this.cueSel.value });
     this.el.querySelector<HTMLButtonElement>('.test-tone')!.onclick = () => this.onTestTone();
 
     this.addSliders(this.el.querySelector('.sliders')!, SLIDERS);
@@ -132,14 +137,15 @@ export class SetupPanel {
     const { inputs, outputs } = await listAudioDevices();
     fill(this.inputSel, inputs, this.store.value.inputId);
     fill(this.outputSel, outputs, this.store.value.outputId);
+    fill(this.cueSel, outputs, this.store.value.cueOutputId, new Option('Off', CUE_OFF));
   }
 
-  update(info: { fps: number; level: number; jaw: number; mic: string; output: string; latencyMs: number; socket: boolean }) {
+  update(info: { fps: number; level: number; jaw: number; mic: string; output: string; latencyMs: number; socket: boolean; micMuted: boolean }) {
     if (this.el.hidden) return;
     this.meter.style.width = `${Math.min(100, info.level * 50)}%`;
     this.readout.textContent = [
       `FPS          ${info.fps.toFixed(0)}`,
-      `Mic          ${info.mic || '(demo / none)'}`,
+      `Mic          ${info.mic || '(demo / none)'}${info.micMuted ? '  · MUTED (F5/Esc to unmute)' : ''}`,
       `Output       ${this.outputSel.selectedOptions[0]?.text ?? 'System default'} · ${info.output}`,
       `Level        ${info.level.toFixed(2)}  (1.0 = full jaw)`,
       `Jaw          ${info.jaw.toFixed(2)}`,
@@ -151,9 +157,9 @@ export class SetupPanel {
   }
 }
 
-function fill(sel: HTMLSelectElement, devices: MediaDeviceInfo[], current: string) {
+function fill(sel: HTMLSelectElement, devices: MediaDeviceInfo[], current: string, first = new Option('System default', '')) {
   sel.innerHTML = '';
-  sel.append(new Option('System default', ''));
+  sel.append(first);
   for (const d of devices) {
     if (d.deviceId === 'default' || !d.deviceId) continue;
     sel.append(new Option(d.label || d.deviceId.slice(0, 8), d.deviceId));

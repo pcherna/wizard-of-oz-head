@@ -19,6 +19,9 @@ export const KEY_MAP: Record<string, EffectName> = {
   '3': 'lightning',
 };
 
+/** Keys that mute or unmute the mic. A clicker's "start show" button sends F5 and Esc in turn. */
+export const MIC_TOGGLE_KEYS = ['F5', 'Escape'];
+
 export interface Settings {
   /** Master output gain, 0..2. */
   volume: number;
@@ -59,6 +62,8 @@ export interface Settings {
   ozFeatureY: number;
   inputId: string;
   outputId: string;
+  /** Where mute/unmute cue tones play, such as the performer's AirPods. 'off' plays none. */
+  cueOutputId: string;
 }
 
 /** Starting strengths for the Oz sculpt, tuned by eye on Oct 27. The setup panel's reset button restores these. */
@@ -94,12 +99,18 @@ export const DEFAULT_SETTINGS: Settings = {
   // Chrome assigns device ids per browser profile, so these stay on the system default.
   inputId: '',
   outputId: '',
+  cueOutputId: 'off',
 };
 
 /** Settings the phone remote may change. Device ids stay on the display Mac. */
 export const REMOTE_SETTING_KEYS = ['volume', 'fireBase'] as const;
 
 export const VOICE = {
+  /**
+   * After unmuting, keep the mic shut this long. Audio spoken while muted is still in transit
+   * (Bluetooth, macOS and Chrome buffers, about 150–250 ms with AirPods) and would leak out.
+   */
+  unmuteHoldSec: 0.35,
   reverbSeconds: 3.2,
   bassBoostDb: 6,
   bassBoostHz: 220,

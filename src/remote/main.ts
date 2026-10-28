@@ -18,6 +18,19 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-effect]'))
   });
 }
 
+// Shows the display's mic state. Tapping asks for the opposite.
+const micBtn = document.querySelector<HTMLButtonElement>('#mic')!;
+let micMuted = false;
+function showMic(muted: boolean) {
+  micMuted = muted;
+  micBtn.textContent = muted ? '🔇 Mic muted' : '🎙️ Mic live';
+  micBtn.classList.toggle('muted', muted);
+}
+micBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  socket.send({ type: 'mic', muted: !micMuted });
+});
+
 const sliders = [...document.querySelectorAll<HTMLInputElement>('input[data-k]')];
 for (const input of sliders) {
   const out = input.nextElementSibling as HTMLOutputElement;
@@ -28,6 +41,7 @@ for (const input of sliders) {
 }
 
 socket.onMessage = (msg) => {
+  if (msg.type === 'mic') showMic(msg.muted);
   if (msg.type !== 'settings') return;
   for (const input of sliders) {
     const v = msg.settings[input.dataset.k as keyof Settings];

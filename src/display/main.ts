@@ -1,4 +1,4 @@
-import { KEY_MAP, LIPSYNC, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
+import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
 import { SettingsStore } from '../settings';
 import { RelaySocket } from '../control/socket';
 import { Voice } from '../audio/voice';
@@ -11,6 +11,7 @@ import { Steam, STEAM_BURST_SEC } from './steam';
 import { Lightning } from './lightning';
 import { SetupPanel } from './setup-panel';
 import { Backdrop } from './backdrop';
+import { CueTones } from '../audio/cue';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -83,6 +84,7 @@ store.subscribe((changed) => {
   if (changed.headScale !== undefined || changed.headY !== undefined) head?.setPlacement(store.value.headScale, store.value.headY);
   if (changed.inputId !== undefined && !demo) voice?.setInput(changed.inputId).catch(showError);
   if (changed.outputId !== undefined) voice?.setOutput(changed.outputId).catch(showError);
+  if (changed.cueOutputId !== undefined) cue.setOutput(changed.cueOutputId).catch(showError);
   if (REMOTE_SETTING_KEYS.some((k) => changed[k] !== undefined)) broadcastSettings();
 });
 
@@ -94,11 +96,37 @@ function broadcastSettings() {
 
 // --- Inputs: clicker / keyboard and the phone remote -------------------------
 
+// The mic starts live on every load. Mute is never saved, so a reload can't leave the wizard silent.
+let micMuted = false;
+
+/** When the mic actually opens after an unmute. The eyes brighten then, not at the key press. */
+let micOpensAt = 0;
+
+const cue = new CueTones();
+
+function setMicMuted(muted: boolean) {
+  micMuted = muted;
+  cue.play(muted);
+  if (!muted) micOpensAt = clock + VOICE.unmuteHoldSec;
+  voice?.setMuted(muted);
+  socket.send({ type: 'mic', muted });
+}
+
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   panel.lastKey = e.key;
   if (e.key === 's' || e.key === 'S') {
     panel.toggle();
+    return;
+  }
+  if (e.key === 'f' || e.key === 'F') {
+    enterFullscreen().catch(() => {});
+    return;
+  }
+  if (MIC_TOGGLE_KEYS.includes(e.key)) {
+    // F5 would reload the page and Esc would leave fullscreen, so always swallow them.
+    e.preventDefault();
+    if (!e.repeat) setMicMuted(!micMuted);
     return;
   }
   const effect = KEY_MAP[e.key];
@@ -108,18 +136,35 @@ addEventListener('keydown', (e) => {
   }
 });
 
+/**
+ * Fullscreen with Esc and F5 locked to the page (Chrome's Keyboard Lock API). Chrome then leaves
+ * fullscreen only when Esc is held for about 2 seconds, so a clicker's quick Esc can't.
+ */
+async function enterFullscreen() {
+  if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+  const keyboard = (navigator as Navigator & { keyboard?: { lock(codes?: string[]): Promise<void> } }).keyboard;
+  await keyboard?.lock(['Escape', 'F5']);
+}
+
 socket.onStatus = (up) => (socketUp = up);
 socket.onMessage = (msg) => {
   if (msg.type === 'effect') trigger(msg.effect);
-  else if (msg.type === 'hello') broadcastSettings();
-  else if (msg.type === 'dump') socket.send({ type: 'settings', settings: store.value });
-  else if (msg.type === 'settings') {
-    const allowed: Partial<Settings> = {};
+  else if (msg.type === 'hello') {
+    broadcastSettings();
+    socket.send({ type: 'mic', muted: micMuted });
+  } else if (msg.type === 'mic') {
+    // Ignore no-op changes, or two open displays would bounce the message back and forth forever.
+    if (msg.muted !== micMuted) setMicMuted(msg.muted === true);
+  } else if (msg.type === 'dump') {
+    socket.send({ type: 'settings', settings: store.value });
+  } else if (msg.type === 'settings') {
+    // Only real changes, so two open displays don't re-broadcast each other's settings forever.
+    const changed: Partial<Settings> = {};
     for (const k of REMOTE_SETTING_KEYS) {
       const v = msg.settings[k];
-      if (typeof v === 'number' && Number.isFinite(v)) allowed[k] = v;
+      if (typeof v === 'number' && Number.isFinite(v) && v !== store.value[k]) changed[k] = v;
     }
-    store.update(allowed);
+    if (Object.keys(changed).length > 0) store.update(changed);
   }
 };
 
@@ -141,7 +186,10 @@ async function start(byClick: boolean) {
       throw new Error(byClick ? "The speakers didn't start. Press S and pick the speakers, or check the Mac's sound output." : '');
     }
     voice = next;
+    voice.setMuted(micMuted);
     sfx = new Sfx(voice.ctx, voice.fxBus);
+    // Inside the start click, so the cue context is allowed to play.
+    cue.setOutput(store.value.cueOutputId).catch(showError);
     // Chrome fires this when the output device fails or disappears.
     voice.ctx.addEventListener('error', () => showError(new Error('Speaker output failed. Pick the speakers again in the setup panel (S).')));
     lipsync = new LipSync(demo ? null : voice.analyser);
@@ -156,7 +204,7 @@ async function start(byClick: boolean) {
   } finally {
     starting = false;
   }
-  if (!document.fullscreenElement && !params.has('autostart')) document.documentElement.requestFullscreen?.().catch(() => {});
+  if (!params.has('autostart')) enterFullscreen().catch(() => {});
 }
 
 /** Turns a start failure into something the operator can act on. Empty means "just click". */
@@ -223,7 +271,8 @@ function frame(now: number) {
   steam.update(clock, dt);
   lightning.update(clock);
   backdrop.update(clock, fire.intensity, lightning.level);
-  head?.update(clock, dt, mouth, fire.intensity, lightning.level);
+  const micLive = !micMuted && clock >= micOpensAt;
+  head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
   stage.render();
 
   panel.update({
@@ -234,6 +283,7 @@ function frame(now: number) {
     output: voice ? `${voice.ctx.sampleRate} Hz, ${voice.ctx.state}` : 'not started',
     latencyMs: voice ? (voice.ctx.baseLatency + (voice.ctx.outputLatency || 0)) * 1000 : 0,
     socket: socketUp,
+    micMuted,
   });
   requestAnimationFrame(frame);
 }

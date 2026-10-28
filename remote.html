@@ -21,6 +21,8 @@
       [data-effect=fire] { background: linear-gradient(#e63, #a20); }
       [data-effect=steam] { background: linear-gradient(#789, #456); }
       [data-effect=lightning] { background: linear-gradient(#66f, #227); }
+      #mic { height: 80px; font-size: 22px; background: linear-gradient(#2a6, #153); }
+      #mic.muted { background: linear-gradient(#a33, #511); }
       label { display: grid; grid-template-columns: 90px 1fr 44px; gap: 10px; align-items: center; }
       input[type=range] { width: 100%; height: 36px; }
       output { text-align: right; font-variant-numeric: tabular-nums; }
@@ -32,6 +34,7 @@
       <button data-effect="fire">🔥 Fire</button>
       <button data-effect="steam">♨️ Steam</button>
       <button data-effect="lightning">⚡ Lightning</button>
+      <button id="mic">🎙️ Mic live</button>
       <label>Volume <input type="range" data-k="volume" min="0" max="2" step="0.01" /><output></output></label>
       <label>Fire level <input type="range" data-k="fireBase" min="0" max="2" step="0.01" /><output></output></label>
     </main>

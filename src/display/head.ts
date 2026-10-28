@@ -72,6 +72,9 @@ const PROCEDURAL_RIG: Rig = {
   eyeR: new THREE.Vector3(0.6, 1.78, 1.6),
 };
 
+/** Eye brightness while the mic is muted, as a fraction of normal. */
+const MUTED_EYE_GLOW = 0.5;
+
 /**
  * "Dog" by all of life (CC BY 4.0): a full-body Lab standing on y = 0, nose at +z, mouth
  * modeled open. Landmarks measured from side, front and midline-section renders.
@@ -287,6 +290,7 @@ export class Head {
   private gazeTarget = new THREE.Vector2();
   private glanceAt = 1;
   private placeY = 0;
+  private eyeDim = 1;
   /** Holds the head still at this yaw (radians), for comparing against references. */
   pinnedYaw: number | null = null;
   private sculptor: OzSculptor | null = null;
@@ -407,7 +411,8 @@ export class Head {
     this.placeY = y;
   }
 
-  update(t: number, dt: number, mouth: MouthState, fire: number, flash: number) {
+  /** micLive false dims the eyes, so the performer can see the mute state. */
+  update(t: number, dt: number, mouth: MouthState, fire: number, flash: number, micLive = true) {
     const u = this.uniforms;
     u.uTime.value = t;
     u.uJaw.value = mouth.jaw;
@@ -422,7 +427,8 @@ export class Head {
     }
     this.blink = Math.max(0, this.blink - dt / 0.15);
     u.uEyeOpen.value = 1 - Math.sin(this.blink * Math.PI);
-    u.uEyeGlow.value = 1 + Math.min(mouth.level, 1.5) * 0.5;
+    this.eyeDim += ((micLive ? 1 : MUTED_EYE_GLOW) - this.eyeDim) * (1 - Math.exp(-dt / 0.12));
+    u.uEyeGlow.value = (1 + Math.min(mouth.level, 1.5) * 0.5) * this.eyeDim;
 
     // The pupils glance somewhere new every 0.8–3 s, with a quick saccade.
     if (t > this.glanceAt) {

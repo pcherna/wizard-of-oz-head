@@ -5,7 +5,7 @@ import { VOICE, type Settings } from '../config';
  * Fixed context rate. Left unset, Chrome copies the default output's rate. With AirPods as the
  * macOS output, their headset mode makes that 24 kHz, and a switch to 48 kHz speakers then goes silent.
  */
-const SAMPLE_RATE = 48000;
+export const SAMPLE_RATE = 48000;
 
 /**
  * Mic → gate + pitch shift → bass boost → dry + reverb → compressor → master → limiter → speakers.
@@ -16,6 +16,8 @@ export class Voice {
   readonly analyser: AnalyserNode;
   readonly fxBus: GainNode;
   private shifter: AudioWorkletNode;
+  /** Mutes the mic ahead of everything, so the mouth closes and the reverb tail dies out naturally. */
+  private input: GainNode;
   private dry: GainNode;
   private wet: GainNode;
   private master: GainNode;
@@ -32,7 +34,9 @@ export class Voice {
     const comp = new DynamicsCompressorNode(ctx, { threshold: -18, knee: 12, ratio: 4, attack: 0.005, release: 0.25 });
     this.master = new GainNode(ctx);
     this.fxBus = new GainNode(ctx);
+    this.input = new GainNode(ctx);
 
+    this.input.connect(this.shifter);
     this.shifter.connect(this.analyser);
     this.shifter.connect(shelf);
     shelf.connect(this.dry).connect(comp);
@@ -61,6 +65,19 @@ export class Voice {
       if (voice) voice.close();
       else ctx.close();
       throw err;
+    }
+  }
+
+  /** Mutes at once. Unmutes after VOICE.unmuteHoldSec, once audio from the muted stretch has drained. */
+  setMuted(muted: boolean) {
+    const t = this.ctx.currentTime;
+    const gain = this.input.gain;
+    gain.cancelScheduledValues(t);
+    if (muted) {
+      gain.setTargetAtTime(0, t, 0.015);
+    } else {
+      gain.setValueAtTime(0, t);
+      gain.setTargetAtTime(1, t + VOICE.unmuteHoldSec, 0.015);
     }
   }
 
@@ -113,7 +130,7 @@ export class Voice {
       },
     });
     this.source = this.ctx.createMediaStreamSource(this.stream);
-    this.source.connect(this.shifter);
+    this.source.connect(this.input);
   }
 
   /** Route output to a chosen device, so AirPods input does not drag output onto the AirPods. */

@@ -28,9 +28,17 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | PageDown, Right arrow, 1 | Fire flare |
 | PageUp, Left arrow, 2 | Steam burst |
 | `b`, `.`, 3 | Lightning and thunder |
+| F5, Esc | Mute or unmute the mic |
 | `s` | Setup panel |
+| `f` | Back to fullscreen |
 
-Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`.
+Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`, or to `MIC_TOGGLE_KEYS` for muting.
+
+Many clickers also have a "start show" button that sends F5 and Esc in turn. Each press mutes or unmutes the mic, so it works as a mute button. Muting silences the voice and closes the mouth, and any reverb already playing dies out. While muted, the wizard's eyes dim to a faint glow, so you can see the state from behind the curtain. The phone remote and the setup panel show it too, and the remote can toggle it. The mic is live every time the app starts.
+
+Unmuting takes effect after about a third of a second. Sound reaches the app late, by about 0.2 seconds with AirPods, so the wait keeps your last words before unmuting from leaking out. The eyes brighten when the mic actually opens, so wait for them before you speak. To change the wait, edit `unmuteHoldSec` in `src/config.ts`.
+
+The app stops F5 from reloading the page. In fullscreen it also locks the Esc key, so only holding Esc for about 2 seconds leaves fullscreen. Press `f` to go back. In show mode Chrome runs in kiosk mode, where Esc never leaves fullscreen.
 
 A loud shout also flares the fire, at most once every 2 seconds.
 
@@ -43,6 +51,7 @@ The server prints the remote URL at startup, and the setup panel shows it too. I
 Press `s` to open it.
 
 - **Mic and Speakers:** pick the mic and the room speakers. Always pick the speakers explicitly. If you don't, macOS can move the output onto the AirPods when they become the input.
+- **Cue tones:** where the mute and unmute tones play. Pick the performer's AirPods, and only the performer hears them: two falling notes for muted, two rising notes for live. The voice and effects stay on the speakers. Off plays no tones. The unmute tone plays while the mic is still shut, so the mic can't pick it up.
 - **Test speakers:** plays a short beep through the chosen output. If one speaker stays silent while others work, open Audio MIDI Setup and check that device's volume and Mute box. macOS keeps a separate volume for each device, and the menu-bar slider only changes the current default.
 - **Pitch and Reverb:** shape the voice. Pitch 0.72 is about six semitones down.
 - **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch.

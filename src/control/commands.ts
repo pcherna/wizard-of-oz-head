@@ -7,7 +7,9 @@ export type Message =
   /** A remote asks the display to broadcast its current settings. */
   | { type: 'hello' }
   /** Asks the display to broadcast all of its settings, for copying them into the defaults. */
-  | { type: 'dump' };
+  | { type: 'dump' }
+  /** Mic mute state. The display broadcasts it, and a remote sends it to change it. */
+  | { type: 'mic'; muted: boolean };
 
 export function parseMessage(text: string): Message | null {
   try {
