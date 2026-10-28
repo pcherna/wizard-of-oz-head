@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
 import { SettingsStore } from '../settings';
 import { RelaySocket } from '../control/socket';
@@ -27,7 +28,7 @@ const steam = new Steam();
 const backdrop = new Backdrop();
 backdrop.setBrightness(store.value.backdrop);
 stage.scene.add(backdrop.mesh);
-stage.scene.add(fire.group, steam.points);
+stage.scene.add(fire.group, steam.composite);
 
 let voice: Voice | null = null;
 let sfx: Sfx | null = null;
@@ -243,6 +244,8 @@ function updatePixelScale() {
   const scale = (innerHeight * stage.renderer.getPixelRatio()) / (2 * Math.tan((camera.fov * Math.PI) / 360));
   fire.setPixelScale(scale);
   steam.setPixelScale(scale);
+  const buffer = stage.renderer.getDrawingBufferSize(new THREE.Vector2());
+  steam.setSize(buffer.x, buffer.y);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
   steam.setHalfWidth(Math.tan((camera.fov * Math.PI) / 360) * 5.7 * camera.aspect);
   backdrop.fit(camera);
@@ -273,6 +276,7 @@ function frame(now: number) {
   backdrop.update(clock, fire.intensity, lightning.level);
   const micLive = !micMuted && clock >= micOpensAt;
   head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
+  steam.renderDensity(stage.renderer, stage.camera);
   stage.render();
 
   panel.update({

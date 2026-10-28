@@ -16,8 +16,8 @@ void main() {
 }
 `;
 
+// Pass 1: each puff adds its density to an offscreen buffer.
 const fragment = /* glsl */ `
-uniform vec3 uTint;
 varying float vAlpha;
 varying float vSeed;
 void main() {
@@ -26,10 +26,43 @@ void main() {
   // Lumpy edge so puffs do not read as perfect discs.
   float ang = atan(p.y, p.x);
   float lump = 0.42 + 0.06 * sin(ang * 3.0 + vSeed * 6.28) + 0.04 * sin(ang * 5.0 - vSeed * 12.0);
-  float a = smoothstep(lump, 0.0, d) * vAlpha;
-  gl_FragColor = vec4(uTint, a);
+  float density = smoothstep(lump, 0.0, d) * vAlpha;
+  gl_FragColor = vec4(vec3(density), 1.0);
 }
 `;
+
+// Pass 2: turn total density into opacity on a curve that levels off. One wisp keeps its
+// look, but any pile-up, from one burst or several, stops at MAX_OPACITY instead of white.
+const compositeVertex = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const compositeFragment = /* glsl */ `
+uniform sampler2D uDensity;
+uniform vec3 uTint;
+uniform float uMaxOpacity;
+uniform float uHalfDensity;
+varying vec2 vUv;
+void main() {
+  // Approaches the cap slowly, so even thick steam keeps some light and shade.
+  float density = texture2D(uDensity, vUv).r;
+  gl_FragColor = vec4(uTint, uMaxOpacity * density / (density + uHalfDensity));
+}
+`;
+
+/**
+ * Densest steam's opacity. With the tint, that peaks just under the bloom threshold (0.32),
+ * so a pile-up can't bloom into a white blob.
+ */
+const MAX_OPACITY = 0.6;
+/** Density that reaches half of MAX_OPACITY. Chosen so a single idle wisp (0.16) looks as it did before the cap. */
+const HALF_DENSITY = 0.44;
+/** The density buffer renders at half size: cheaper, and the softness suits steam. */
+const DENSITY_RES = 0.5;
 
 const PER_SIDE = 400;
 const IDLE_RATE = 14;
@@ -45,9 +78,15 @@ interface Vent {
   dir: number;
 }
 
-/** Steam venting on both sides of the head. `burst()` blasts both vents. */
+/**
+ * Steam venting on both sides of the head. `burst()` blasts both vents. Add `composite` to the
+ * scene, and call `renderDensity()` each frame before rendering it.
+ */
 export class Steam {
-  readonly points: THREE.Points;
+  readonly composite: THREE.Mesh;
+  private points: THREE.Points;
+  private densityScene = new THREE.Scene();
+  private density = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
   private count = PER_SIDE * 2;
   private pos = new Float32Array(this.count * 3);
   private vel = new Float32Array(this.count * 3);
@@ -61,7 +100,7 @@ export class Steam {
   /** Burst puffs are thinner, since many overlap. */
   private opacity = new Float32Array(this.count);
   private geo = new THREE.BufferGeometry();
-  private uniforms = { uPixelScale: { value: 800 }, uTint: { value: new THREE.Color(0.42, 0.47, 0.45) } };
+  private uniforms = { uPixelScale: { value: 800 } };
   private vents: Vent[] = [
     { x: -1.75, dir: -1 },
     { x: 1.75, dir: 1 },
@@ -78,9 +117,49 @@ export class Steam {
     this.geo.setAttribute('aSeed', new THREE.BufferAttribute(this.seed, 1));
     this.points = new THREE.Points(
       this.geo,
-      new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vertex, fragmentShader: fragment, transparent: true, depthWrite: false }),
+      new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        vertexShader: vertex,
+        fragmentShader: fragment,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+      }),
     );
     this.points.frustumCulled = false;
+    this.densityScene.add(this.points);
+
+    this.composite = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uDensity: { value: this.density.texture },
+          uTint: { value: new THREE.Color(0.42, 0.47, 0.45) },
+          uMaxOpacity: { value: MAX_OPACITY },
+          uHalfDensity: { value: HALF_DENSITY },
+        },
+        vertexShader: compositeVertex,
+        fragmentShader: compositeFragment,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    this.composite.frustumCulled = false;
+    // Before the fire, so flames still glow over the steam at the vents.
+    this.composite.renderOrder = -1;
+  }
+
+  /** Match the density buffer to the screen. Pass the renderer's drawing-buffer size. */
+  setSize(width: number, height: number) {
+    this.density.setSize(Math.max(1, Math.round(width * DENSITY_RES)), Math.max(1, Math.round(height * DENSITY_RES)));
+  }
+
+  renderDensity(renderer: THREE.WebGLRenderer, camera: THREE.Camera) {
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.density);
+    renderer.render(this.densityScene, camera);
+    renderer.setRenderTarget(previous);
   }
 
   burst() {
@@ -88,7 +167,8 @@ export class Steam {
   }
 
   setPixelScale(scale: number) {
-    this.uniforms.uPixelScale.value = scale;
+    // Point sizes are in pixels of the half-size density buffer.
+    this.uniforms.uPixelScale.value = scale * DENSITY_RES;
   }
 
   /** Keep the vents inside the frame on any projector aspect ratio. */
