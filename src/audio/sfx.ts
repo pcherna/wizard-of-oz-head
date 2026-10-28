@@ -1,5 +1,12 @@
 type SoundName = 'thunder' | 'steam' | 'fire';
 
+/** Mix level of each sound relative to the voice. Applies to synthesized sounds and .wav files alike. */
+const LEVELS: Record<SoundName, number> = {
+  fire: 0.3,
+  steam: 0.3,
+  thunder: 0.7,
+};
+
 /**
  * Effect sounds on the speaker bus. Each plays public/sfx/<name>.wav if that file exists,
  * and synthesizes the sound otherwise.
@@ -8,8 +15,15 @@ export class Sfx {
   private samples: Partial<Record<SoundName, AudioBuffer>> = {};
   private white: AudioBuffer;
   private brown: AudioBuffer;
+  private bus: Record<SoundName, GainNode>;
 
-  constructor(private ctx: BaseAudioContext, private out: AudioNode) {
+  constructor(private ctx: BaseAudioContext, out: AudioNode) {
+    this.bus = {
+      fire: new GainNode(ctx, { gain: LEVELS.fire }),
+      steam: new GainNode(ctx, { gain: LEVELS.steam }),
+      thunder: new GainNode(ctx, { gain: LEVELS.thunder }),
+    };
+    for (const bus of Object.values(this.bus)) bus.connect(out);
     this.white = whiteNoise(ctx, 3);
     this.brown = brownNoise(ctx, 8);
     for (const name of ['thunder', 'steam', 'fire'] as const) {
@@ -43,7 +57,7 @@ export class Sfx {
       const gain = new GainNode(this.ctx, { gain: 0 });
       gain.gain.setTargetAtTime(0.35, t, 0.015);
       gain.gain.setTargetAtTime(0, t + seconds, 0.2);
-      src.connect(hp).connect(gain).connect(new StereoPannerNode(this.ctx, { pan })).connect(this.out);
+      src.connect(hp).connect(gain).connect(new StereoPannerNode(this.ctx, { pan })).connect(this.bus.steam);
       src.start(t, Math.random() * 2);
       src.stop(t + seconds + 1.5);
     }
@@ -63,7 +77,7 @@ export class Sfx {
     gain.gain.linearRampToValueAtTime(1.2, t + 0.12);
     // Decay on the same time scale as the visual flare, so the roar lasts as long as the flames.
     gain.gain.setTargetAtTime(0, t + 0.25, 0.5);
-    src.connect(lp).connect(gain).connect(this.out);
+    src.connect(lp).connect(gain).connect(this.bus.fire);
     src.start(t, Math.random() * 4);
     src.stop(t + 3);
 
@@ -74,7 +88,7 @@ export class Sfx {
     const buffer = this.samples[name];
     if (!buffer) return false;
     const src = new AudioBufferSourceNode(this.ctx, { buffer });
-    src.connect(this.out);
+    src.connect(this.bus[name]);
     src.start();
     return true;
   }
@@ -86,7 +100,7 @@ export class Sfx {
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.25 + Math.random() * 0.3, t + 0.002);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03 + Math.random() * 0.04);
-    src.connect(band).connect(gain).connect(this.out);
+    src.connect(band).connect(gain).connect(this.bus.fire);
     src.start(t, Math.random() * 2);
     src.stop(t + 0.1);
   }
@@ -98,7 +112,7 @@ export class Sfx {
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(0.9, t + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-    src.connect(band).connect(gain).connect(this.out);
+    src.connect(band).connect(gain).connect(this.bus.thunder);
     src.start(t);
     src.stop(t + 0.6);
   }
@@ -123,7 +137,7 @@ export class Sfx {
       at = next;
     }
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(lp).connect(gain).connect(this.out);
+    src.connect(lp).connect(gain).connect(this.bus.thunder);
     src.start(t);
     src.stop(t + dur + 0.1);
   }
