@@ -1,0 +1,132 @@
+import type { Settings } from '../config';
+import { listAudioDevices } from '../audio/voice';
+import type { SettingsStore } from '../settings';
+
+type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+
+const SLIDERS: [NumericKey, string, number, number, number][] = [
+  ['volume', 'Volume', 0, 2, 0.01],
+  ['pitch', 'Pitch', 0.5, 1, 0.01],
+  ['reverbWet', 'Reverb', 0, 1, 0.01],
+  ['gate', 'Gate', 0, 0.05, 0.001],
+  ['sensitivity', 'Mouth sensitivity', 0.02, 0.3, 0.005],
+  ['fireBase', 'Fire level', 0, 2, 0.01],
+  ['headScale', 'Head scale', 0.5, 1.8, 0.01],
+  ['headY', 'Head height', -1, 1, 0.01],
+];
+
+/** Operator panel, toggled with S. Device pickers, tuning sliders, and live readouts. */
+export class SetupPanel {
+  private el: HTMLElement;
+  private meter: HTMLElement;
+  private readout: HTMLElement;
+  private inputSel: HTMLSelectElement;
+  private outputSel: HTMLSelectElement;
+  private sliders = new Map<NumericKey, HTMLInputElement>();
+  lastKey = '—';
+  onTestTone: () => void = () => {};
+  private remoteUrl = '(server offline)';
+
+  constructor(private store: SettingsStore) {
+    this.el = document.createElement('div');
+    this.el.id = 'setup';
+    this.el.hidden = true;
+    this.el.innerHTML = `
+      <h2>Wizard setup <small>(S to close)</small></h2>
+      <label>Mic <select data-k="inputId"></select></label>
+      <label>Speakers <select data-k="outputId"></select></label>
+      <button class="test-tone">Test speakers</button>
+      <label>Head <select data-k="headVariant">
+        <option value="scan">Scan (Lee Perry-Smith)</option>
+        <option value="procedural">Procedural</option>
+      </select></label>
+      <div class="sliders"></div>
+      <div class="meter"><div></div></div>
+      <pre class="readout"></pre>
+      <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.</p>`;
+    document.body.append(this.el);
+
+    this.inputSel = this.el.querySelector('[data-k=inputId]')!;
+    this.outputSel = this.el.querySelector('[data-k=outputId]')!;
+    const variantSel = this.el.querySelector<HTMLSelectElement>('[data-k=headVariant]')!;
+    variantSel.value = store.value.headVariant;
+    variantSel.onchange = () => store.update({ headVariant: variantSel.value as Settings['headVariant'] });
+    this.inputSel.onchange = () => store.update({ inputId: this.inputSel.value });
+    this.outputSel.onchange = () => store.update({ outputId: this.outputSel.value });
+    this.el.querySelector<HTMLButtonElement>('.test-tone')!.onclick = () => this.onTestTone();
+
+    const box = this.el.querySelector('.sliders')!;
+    for (const [key, label, min, max, step] of SLIDERS) {
+      const row = document.createElement('label');
+      row.innerHTML = `${label} <input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
+      const input = row.querySelector('input')!;
+      const out = row.querySelector('output')!;
+      input.value = String(store.value[key]);
+      out.textContent = input.value;
+      input.oninput = () => {
+        out.textContent = input.value;
+        store.update({ [key]: Number(input.value) });
+      };
+      this.sliders.set(key, input);
+      box.append(row);
+    }
+    this.meter = this.el.querySelector('.meter > div')!;
+    this.readout = this.el.querySelector('.readout')!;
+
+    store.subscribe((changed) => {
+      for (const [key, input] of this.sliders) {
+        if (changed[key] !== undefined) {
+          input.value = String(changed[key]);
+          input.nextElementSibling!.textContent = input.value;
+        }
+      }
+    });
+    navigator.mediaDevices?.addEventListener('devicechange', () => this.refreshDevices());
+    fetch('/api/info')
+      .then((r) => r.json() as Promise<{ remoteUrls: string[] }>)
+      .then((info) => (this.remoteUrl = info.remoteUrls[0] ?? this.remoteUrl))
+      .catch(() => {});
+  }
+
+  toggle() {
+    this.el.hidden = !this.el.hidden;
+    document.body.classList.toggle('show-cursor', !this.el.hidden);
+    if (!this.el.hidden) this.refreshDevices();
+  }
+
+  get visible() {
+    return !this.el.hidden;
+  }
+
+  async refreshDevices() {
+    const { inputs, outputs } = await listAudioDevices();
+    fill(this.inputSel, inputs, this.store.value.inputId);
+    fill(this.outputSel, outputs, this.store.value.outputId);
+  }
+
+  update(info: { fps: number; level: number; jaw: number; mic: string; output: string; latencyMs: number; socket: boolean }) {
+    if (this.el.hidden) return;
+    this.meter.style.width = `${Math.min(100, info.level * 50)}%`;
+    this.readout.textContent = [
+      `FPS          ${info.fps.toFixed(0)}`,
+      `Mic          ${info.mic || '(demo / none)'}`,
+      `Output       ${this.outputSel.selectedOptions[0]?.text ?? 'System default'} · ${info.output}`,
+      `Level        ${info.level.toFixed(2)}  (1.0 = full jaw)`,
+      `Jaw          ${info.jaw.toFixed(2)}`,
+      `Out latency  ${info.latencyMs.toFixed(0)} ms (excludes Bluetooth input)`,
+      `Last key     ${this.lastKey}`,
+      `Relay        ${info.socket ? 'connected' : 'offline'}`,
+      `Remote URL   ${this.remoteUrl}`,
+    ].join('\n');
+  }
+}
+
+function fill(sel: HTMLSelectElement, devices: MediaDeviceInfo[], current: string) {
+  sel.innerHTML = '';
+  sel.append(new Option('System default', ''));
+  for (const d of devices) {
+    if (d.deviceId === 'default' || !d.deviceId) continue;
+    sel.append(new Option(d.label || d.deviceId.slice(0, 8), d.deviceId));
+  }
+  sel.value = current;
+}

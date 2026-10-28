@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Oz Remote</title>
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; background: #050a05; color: #cfc; font: 16px/1.4 system-ui, sans-serif; }
+      main { display: grid; gap: 14px; padding: 16px; max-width: 520px; margin: 0 auto; min-height: 100vh; align-content: start; }
+      header { display: flex; justify-content: space-between; align-items: center; }
+      h1 { margin: 0; font: 600 20px Georgia, serif; color: #7f7; }
+      #status { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: #600; color: #fdd; }
+      #status.up { background: #163; color: #cfc; }
+      button {
+        height: 110px; border: 0; border-radius: 16px; font: 700 26px system-ui, sans-serif; color: #fff;
+        touch-action: manipulation; user-select: none; -webkit-user-select: none;
+      }
+      button:active { transform: scale(0.97); filter: brightness(1.3); }
+      [data-effect=fire] { background: linear-gradient(#e63, #a20); }
+      [data-effect=steam] { background: linear-gradient(#789, #456); }
+      [data-effect=lightning] { background: linear-gradient(#66f, #227); }
+      label { display: grid; grid-template-columns: 90px 1fr 44px; gap: 10px; align-items: center; }
+      input[type=range] { width: 100%; height: 36px; }
+      output { text-align: right; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><h1>The Great Oz</h1><span id="status">offline</span></header>
+      <button data-effect="fire">🔥 Fire</button>
+      <button data-effect="steam">♨️ Steam</button>
+      <button data-effect="lightning">⚡ Lightning</button>
+      <label>Volume <input type="range" data-k="volume" min="0" max="2" step="0.01" /><output></output></label>
+      <label>Fire level <input type="range" data-k="fireBase" min="0" max="2" step="0.01" /><output></output></label>
+    </main>
+    <script type="module" src="/src/remote/main.ts"></script>
+  </body>
+</html>
