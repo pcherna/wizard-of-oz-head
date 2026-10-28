@@ -247,10 +247,16 @@ function explainStartError(err: unknown): string {
   }
 }
 
+/** How long an error stays on screen. The show goes on, so it shouldn't linger over it. */
+const ERROR_SHOW_MS = 10_000;
+let errorTimer = 0;
+
 function showError(err: unknown) {
   console.error(err);
   errorEl.textContent = err instanceof Error ? err.message : String(err);
   errorEl.hidden = false;
+  clearTimeout(errorTimer);
+  errorTimer = window.setTimeout(() => (errorEl.hidden = true), ERROR_SHOW_MS);
 }
 
 const startReason = document.createElement('small');

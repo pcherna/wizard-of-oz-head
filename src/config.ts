@@ -106,7 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 /** Settings the phone remote may change. Device ids stay on the display Mac. */
-export const REMOTE_SETTING_KEYS = ['volume', 'fireBase'] as const;
+export const REMOTE_SETTING_KEYS = ['volume', 'fireBase', 'brightness'] as const;
 
 export const VOICE = {
   /**
