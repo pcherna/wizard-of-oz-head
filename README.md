@@ -1,6 +1,12 @@
-# The Great Oz
+# The Great Oz(zie)
+
+Every year for Halloween night, we do a haunted house in our garage for the kids to walk through. This year's theme is the Wizard of Oz. For that, I created this effect:
 
 A projected green head over a fire, with steam on both sides. A hidden performer talks into a mic. The app lowers the voice, adds a large-hall reverb, and plays it through the room speakers. The jaw follows the processed voice. A presentation clicker or a phone triggers fire flares, steam bursts, and lightning with thunder.
+
+## Use of AI Coding Tools
+
+This package was developed using Claude Code and Claude Opus 5.5.
 
 ## Run it
 
@@ -24,11 +30,11 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 ## Controls
 
 | Key | Action |
-|---|---|
-| PageDown, Right arrow, 1 | Fire flare |
-| PageUp, Left arrow, 2 | Steam burst |
-| `b`, `.`, 3 | Lightning and thunder |
-| F5, Esc | Mute or unmute the mic |
+| --- | --- |
+| `PageDown`, `Right arrow`, `1` | Fire flare |
+| `PageUp`, `Left arrow`, `2` | Steam burst |
+| `b`, `.`, `3` | Lightning and thunder |
+| `F5`, `Esc` | Mute or unmute the mic |
 | `s` | Setup panel |
 | `f` | Back to fullscreen |
 
@@ -45,6 +51,10 @@ A loud shout also flares the fire, at most once every 2 seconds.
 ## Phone remote
 
 The server prints the remote URL at startup, and the setup panel shows it too. It looks like `http://<mac-name>.local:8787/remote.html`. The phone must be on the same Wi-Fi as the Mac. If the page says "offline", the Wi-Fi probably blocks device-to-device traffic. In that case, join the Mac to the phone's hotspot.
+
+The remote has buttons for fire, steam, lightning and the mic, and sliders for volume, fire level and overall brightness.
+
+If audio fails during the show, a red message appears in the bottom-left corner. It clears itself after 10 seconds.
 
 ## Setup panel
 
