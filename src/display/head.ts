@@ -4,13 +4,28 @@ import type { HeadVariant } from '../config';
 import type { MouthState } from '../audio/lipsync';
 import { FACE_MID_X, OzSculptor, mapFeature, type SculptParams } from './oz-sculpt';
 
-/** Landmarks in the mesh's own coordinates (Lee Perry-Smith frame: +z forward, nose tip ≈ (0, 1.1, 2.56)). */
+/** Landmarks in the mesh's own coordinates. Every model faces +z with +y up. */
 interface Rig {
+  /** World units per mesh unit at headScale 1. */
+  scale: number;
+  /** The neck point the head turns around. */
+  pivot: THREE.Vector3;
+  /** Jaw angle (radians) from fully closed to fully open. */
+  jawMax: number;
+  /** How far the model's own jaw already hangs open. Silence rotates it shut by this much. */
+  jawRest: number;
+  /** Fade the neck across a plane: xyz is its normal toward the head, w its offset. */
+  cut: THREE.Vector4;
+  /** A closed lip seam that opens by stretching (human scans). False for a modeled open mouth. */
+  seamMouth: boolean;
+  /** Paint eyes over closed lids. False glows the model's own eyes instead. */
+  paintEyes: boolean;
+  /** Radius of the eye glow, used when paintEyes is false. */
+  eyeRadius: number;
   /** Left-right midline of the face. */
   midX: number;
   seamY: number;
   chinY: number;
-  neckY: number;
   mouthZ: number;
   mouthHalfW: number;
   hinge: THREE.Vector3;
@@ -19,10 +34,17 @@ interface Rig {
 }
 
 const SCAN_RIG: Rig = {
+  scale: 0.3,
+  pivot: new THREE.Vector3(0, 0.2, -0.3),
+  jawMax: 0.24,
+  jawRest: 0,
+  cut: neckCut(-0.85),
+  seamMouth: true,
+  paintEyes: true,
+  eyeRadius: 0,
   midX: FACE_MID_X,
   seamY: 0.45,
   chinY: -0.55,
-  neckY: -0.85,
   mouthZ: 2.24,
   mouthHalfW: 0.5,
   hinge: new THREE.Vector3(0, 0.95, -0.2),
@@ -35,7 +57,7 @@ const SCAN_RIG: Rig = {
 const OZ_RIG: Rig = {
   ...SCAN_RIG,
   // Fade the neck high. The narrowed chin would otherwise sit on a wide neck like a funnel.
-  neckY: -0.3,
+  cut: neckCut(-0.3),
   // Centered on the scan's closed lid line, which sits a little below the eyeball's middle.
   eyeL: new THREE.Vector3(FACE_MID_X - 0.66, 1.71, 1.65),
   eyeR: new THREE.Vector3(FACE_MID_X + 0.66, 1.71, 1.65),
@@ -44,16 +66,42 @@ const OZ_RIG: Rig = {
 const PROCEDURAL_RIG: Rig = {
   ...SCAN_RIG,
   midX: 0,
-  neckY: -0.6,
+  cut: neckCut(-0.6),
   mouthZ: 1.95,
   eyeL: new THREE.Vector3(-0.6, 1.78, 1.6),
   eyeR: new THREE.Vector3(0.6, 1.78, 1.6),
 };
 
-/** World units per mesh unit at headScale 1, and the neck pivot the head turns around. */
-const BASE_SCALE = 0.3;
-const PIVOT = new THREE.Vector3(0, 0.2, -0.3);
-const JAW_MAX_RAD = 0.24;
+/**
+ * "Dog" by all of life (CC BY 4.0): a full-body Lab standing on y = 0, nose at +z, mouth
+ * modeled open. Landmarks measured from side, front and midline-section renders.
+ */
+const LABRADOR_RIG: Rig = {
+  scale: 0.68,
+  pivot: new THREE.Vector3(0, 4.15, 3.5),
+  // Closed to a 24° gape. The model's own pose hangs about 16° open.
+  jawMax: 0.42,
+  jawRest: 0.27,
+  hinge: new THREE.Vector3(0, 4.22, 3.62),
+  // Behind the skull, tilted with the neck: top of the neck (y 5.3, z 2.85) down to the throat.
+  cut: new THREE.Vector4(0, 0.424, 0.905, 0.424 * 5.3 + 0.905 * 2.85),
+  seamMouth: false,
+  paintEyes: false,
+  eyeRadius: 0.07,
+  eyeL: new THREE.Vector3(-0.27, 4.85, 4.05),
+  eyeR: new THREE.Vector3(0.27, 4.85, 4.05),
+  // Unused without a seam mouth, but kept consistent with the measurements.
+  midX: 0,
+  seamY: 4.1,
+  chinY: 3.8,
+  mouthZ: 4.5,
+  mouthHalfW: 0.38,
+};
+
+/** A horizontal neck fade at height y, for the upright human scans. */
+function neckCut(y: number): THREE.Vector4 {
+  return new THREE.Vector4(0, 1, 0, y);
+}
 
 const vertexShader = /* glsl */ `
 uniform float uJaw;
@@ -65,6 +113,9 @@ uniform float uMouthHalfW;
 uniform float uMidX;
 uniform vec3 uHinge;
 uniform float uJawMax;
+uniform float uJawRest;
+uniform float uSeamMouth;
+attribute float aJaw;
 varying vec3 vNormalW;
 varying vec3 vPosW;
 varying vec3 vLocal;
@@ -89,7 +140,7 @@ float jawWeight(vec3 p) {
 void main() {
   vec3 p = position;
   vec3 n = normal;
-  float m = mouthMask(position);
+  float m = mouthMask(position) * uSeamMouth;
   float nearSeam = exp(-pow((position.y - uSeamY) / 0.3, 2.0));
 
   // Wide "ee" or rounded "oo".
@@ -98,8 +149,9 @@ void main() {
   float upper = m * smoothstep(uSeamY - 0.01, uSeamY + 0.03, position.y) * exp(-pow((position.y - uSeamY) / 0.18, 2.0));
   p.y += upper * uJaw * 0.07;
 
-  float w = jawWeight(position);
-  float a = uJaw * uJawMax * w;
+  // A modeled open mouth carries precomputed weights in aJaw.
+  float w = mix(aJaw, jawWeight(position), uSeamMouth);
+  float a = (uJaw * uJawMax - uJawRest) * w;
   float c = cos(a);
   float s = sin(a);
   vec3 q = p - uHinge;
@@ -125,7 +177,11 @@ uniform float uFire;
 uniform float uFlash;
 uniform float uEyeGlow;
 uniform float uUseMap;
-uniform float uNeckY;
+uniform float uAlphaCut;
+uniform vec4 uCut;
+uniform float uSeamMouth;
+uniform float uPaintEyes;
+uniform float uEyeRadius;
 uniform float uChinY;
 uniform float uRimGlow;
 uniform float uShine;
@@ -162,12 +218,14 @@ vec4 paintEye(vec3 d) {
 }
 
 void main() {
-  float neck = smoothstep(uNeckY - 0.5, uNeckY + 0.25, vLocal.y);
-  // Keep the front of the chin where the neck fades, so the face ends in a point.
-  neck = max(neck, smoothstep(1.2, 1.7, vLocal.z) * smoothstep(uChinY - 0.2, uChinY + 0.1, vLocal.y));
+  float cutD = dot(vLocal, uCut.xyz) - uCut.w;
+  float neck = smoothstep(-0.5, 0.25, cutD);
+  // Human scans: keep the front of the chin where the neck fades, so the face ends in a point.
+  neck = max(neck, uSeamMouth * smoothstep(1.2, 1.7, vLocal.z) * smoothstep(uChinY - 0.2, uChinY + 0.1, vLocal.y));
   if (neck <= 0.001) discard;
 
   vec3 N = normalize(vNormalW);
+  if (!gl_FrontFacing) N = -N;
   vec3 V = normalize(cameraPosition - vPosW);
   vec3 lKey = normalize(vec3(-0.3, 0.9, 0.7));
   vec3 lFire = normalize(vec3(0.0, -0.9, 0.5));
@@ -176,8 +234,9 @@ void main() {
 
   float detail = 1.0;
   if (uUseMap > 0.5) {
-    vec3 t = texture2D(uMap, vUv).rgb;
-    detail = 0.45 + 1.1 * dot(t, vec3(0.3, 0.59, 0.11));
+    vec4 t = texture2D(uMap, vUv);
+    if (t.a < uAlphaCut) discard;
+    detail = 0.45 + 1.1 * dot(t.rgb, vec3(0.3, 0.59, 0.11));
   }
   vec3 col = uBase * (0.12 + 0.7 * key) * detail;
 
@@ -189,16 +248,25 @@ void main() {
   vec3 H = normalize(lKey + V);
   col += vec3(0.6, 1.0, 0.6) * pow(max(dot(N, H), 0.0), 40.0) * 0.25 * uShine;
 
-  vec4 eyeL = paintEye(vLocal - uEyeL);
-  vec4 eyeR = paintEye(vLocal - uEyeR);
-  col = mix(col, eyeL.rgb * uEyeGlow, eyeL.a);
-  col = mix(col, eyeR.rgb * uEyeGlow, eyeR.a);
+  if (uPaintEyes > 0.5) {
+    vec4 eyeL = paintEye(vLocal - uEyeL);
+    vec4 eyeR = paintEye(vLocal - uEyeR);
+    col = mix(col, eyeL.rgb * uEyeGlow, eyeL.a);
+    col = mix(col, eyeR.rgb * uEyeGlow, eyeR.a);
+  } else {
+    // The model has real eyes: light them from within, and let blinks dim them.
+    vec3 dl = vLocal - uEyeL;
+    vec3 dr = vLocal - uEyeR;
+    float r2 = uEyeRadius * uEyeRadius;
+    float glow = exp(-dot(dl, dl) / r2) + exp(-dot(dr, dr) / r2);
+    col += vec3(0.75, 1.0, 0.45) * glow * 0.7 * uEyeGlow * uEyeOpen;
+  }
 
   // Mouth interior: the faces stretched across the lip seam.
   float inMouth = (1.0 - smoothstep(uMouthHalfW * 0.8, uMouthHalfW * 1.2, abs(vLocal.x - uMidX)))
                 * exp(-pow((vLocal.y - uSeamY) / 0.25, 2.0));
   float gap = smoothstep(0.02, 0.2, vJawW) * (1.0 - smoothstep(0.8, 0.98, vJawW));
-  col = mix(col, vec3(0.0, 0.025, 0.0), clamp(inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
+  col = mix(col, vec3(0.0, 0.025, 0.0), clamp(uSeamMouth * inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
 
   col += uFlash * vec3(0.7, 0.85, 1.0) * (0.25 + 0.8 * key);
   col *= 0.96 + 0.04 * sin(vPosW.y * 140.0 - uTime * 6.0);
@@ -223,14 +291,24 @@ export class Head {
   pinnedYaw: number | null = null;
   private sculptor: OzSculptor | null = null;
 
-  private constructor(geometry: THREE.BufferGeometry, rig: Rig, map: THREE.Texture | null) {
+  private constructor(
+    geometry: THREE.BufferGeometry,
+    private rig: Rig,
+    map: THREE.Texture | null,
+    opts: { alphaCut?: number; doubleSided?: boolean } = {},
+  ) {
     this.uniforms = {
       uJaw: { value: 0 },
       uWidth: { value: 0 },
-      uJawMax: { value: JAW_MAX_RAD },
+      uJawMax: { value: rig.jawMax },
+      uJawRest: { value: rig.jawRest },
+      uSeamMouth: { value: rig.seamMouth ? 1 : 0 },
+      uPaintEyes: { value: rig.paintEyes ? 1 : 0 },
+      uEyeRadius: { value: rig.eyeRadius },
+      uCut: { value: rig.cut },
+      uAlphaCut: { value: opts.alphaCut ?? 0 },
       uSeamY: { value: rig.seamY },
       uChinY: { value: rig.chinY },
-      uNeckY: { value: rig.neckY },
       uMouthZ: { value: rig.mouthZ },
       uMouthHalfW: { value: rig.mouthHalfW },
       uMidX: { value: rig.midX },
@@ -252,15 +330,21 @@ export class Head {
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
     };
-    const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms });
+    const material = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader,
+      uniforms: this.uniforms,
+      side: opts.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+    });
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.position.copy(PIVOT).multiplyScalar(-1);
+    this.mesh.position.copy(rig.pivot).multiplyScalar(-1);
     this.group.add(this.mesh);
     this.setPlacement(1, 0);
   }
 
   static async create(variant: HeadVariant, sculpt: SculptParams): Promise<Head> {
     if (variant === 'procedural') return new Head(proceduralGeometry(), PROCEDURAL_RIG, null);
+    if (variant === 'labrador') return Head.createLabrador();
     const [gltf, map] = await Promise.all([
       new GLTFLoader().loadAsync('/models/LeePerrySmith.glb'),
       new THREE.TextureLoader().loadAsync('/models/Map-COL.jpg'),
@@ -277,6 +361,19 @@ export class Head {
     head.sculptor = sculptor;
     head.setSculpt(sculpt);
     return head;
+  }
+
+  private static async createLabrador(): Promise<Head> {
+    const gltf = await new GLTFLoader().loadAsync('/models/labrador-head.glb');
+    let source: THREE.Mesh | null = null;
+    gltf.scene.traverse((o) => {
+      if (o instanceof THREE.Mesh && !source) source = o;
+    });
+    if (!source) throw new Error('No mesh in labrador-head.glb');
+    const { geometry, material } = source as THREE.Mesh;
+    const std = material as THREE.MeshStandardMaterial;
+    geometry.setAttribute('aJaw', labradorJawWeights(geometry, LABRADOR_RIG.hinge));
+    return new Head(geometry, LABRADOR_RIG, std.map, { alphaCut: std.alphaTest, doubleSided: std.side === THREE.DoubleSide });
   }
 
   /** Green edge glow strength: 0 is none. */
@@ -306,7 +403,7 @@ export class Head {
   }
 
   setPlacement(scale: number, y: number) {
-    this.group.scale.setScalar(BASE_SCALE * scale);
+    this.group.scale.setScalar(this.rig.scale * scale);
     this.placeY = y;
   }
 
@@ -359,6 +456,39 @@ export class Head {
   }
 }
 
+/**
+ * 1 for the Lab's lower jaw, tongue and lower teeth, 0 for the rest. The split follows the gap
+ * between upper and lower parts of the mouth, which sits at a different height at the midline,
+ * along the tooth row, and at the lips. It fades out behind the mouth corner, out toward the
+ * ears, and down the throat.
+ */
+function labradorJawWeights(geometry: THREE.BufferGeometry, hinge: THREE.Vector3): THREE.BufferAttribute {
+  const pos = geometry.attributes.position;
+  const weights = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = Math.abs(pos.getX(i));
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    // Three split lines, measured from cross-sections: palate over tongue at the midline,
+    // under the upper tooth tips along the tooth row (those teeth hang lower), and the lips.
+    const inner = 4.105 + (4.45 - z) * 0.325;
+    const teeth = 3.99 + (4.32 - z) * 0.21;
+    const lips = 4.05 + (4.47 - z) * 0.11;
+    const toothRow = smoothstep(0.14, 0.19, x);
+    const outside = smoothstep(0.33, 0.39, x);
+    const split = mix(mix(inner, teeth, toothRow), lips, outside);
+    // Sharp inside the mouth. Soft at the lips, so the hanging upper lips stretch with the jaw
+    // instead of dangling like fangs.
+    const band = 0.01 + 0.07 * outside;
+    const below = 1 - smoothstep(split - band, split + band, y);
+    const front = smoothstep(hinge.z - 0.05, hinge.z + 0.33, z);
+    const muzzle = 1 - smoothstep(0.55, 0.75, x);
+    const throat = smoothstep(3.55, 3.75, y);
+    weights[i] = below * front * muzzle * throat;
+  }
+  return new THREE.BufferAttribute(weights, 1);
+}
+
 /** Smooth value noise in [-1, 1]. */
 function noise1(x: number): number {
   const i = Math.floor(x);
@@ -370,6 +500,10 @@ function noise1(x: number): number {
 function hash(n: number): number {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return (s - Math.floor(s)) * 2 - 1;
+}
+
+function mix(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }
 
 function smoothstep(a: number, b: number, x: number): number {

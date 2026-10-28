@@ -15,6 +15,8 @@ const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
 /** `?yaw=0.5` holds the head still at that angle, for checking its shape. */
 const pinnedYaw = params.has('yaw') ? Number(params.get('yaw')) : null;
+/** `?jaw=0.6` holds the mouth open that far (0 shut, 1 wide), for checking the jaw split. */
+const pinnedJaw = params.has('jaw') ? Number(params.get('jaw')) : null;
 
 const store = new SettingsStore();
 const stage = createStage(document.querySelector<HTMLCanvasElement>('#stage')!);
@@ -177,6 +179,7 @@ function frame(now: number) {
   fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
 
   const mouth = lipsync.update(dt, store.value.sensitivity, demo ? clock : undefined);
+  if (pinnedJaw !== null) mouth.jaw = pinnedJaw;
   if (mouth.shout && now - lastAutoFlare > LIPSYNC.autoFlareDebounceMs) {
     lastAutoFlare = now;
     fire.flareUp();

@@ -58,13 +58,15 @@ export class SetupPanel {
         <option value="oz">Oz (sculpted scan)</option>
         <option value="scan">Scan (Lee Perry-Smith)</option>
         <option value="procedural">Procedural</option>
+        <option value="labrador">Labrador</option>
       </select></label>
       <div class="sliders"></div>
       <h3>Oz sculpt <button class="reset-sculpt">Reset</button></h3>
       <div class="sculpt"></div>
       <div class="meter"><div></div></div>
       <pre class="readout"></pre>
-      <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.</p>`;
+      <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.<br>
+        Labrador: "Dog" by all of life, CC BY 4.0, via Sketchfab.</p>`;
     document.body.append(this.el);
 
     this.inputSel = this.el.querySelector('[data-k=inputId]')!;

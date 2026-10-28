@@ -67,3 +67,5 @@ The app synthesizes all three sounds. To use a recording instead, save it as `pu
 ## Credits
 
 Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, from the three.js examples. See `public/models/LeePerrySmith_License.txt`.
+
+Labrador: ["Dog"](https://sketchfab.com/3d-models/dog-06d4813d176e4beb99d2f051d61fd865) by all of life, CC BY 4.0, from Sketchfab. See `public/models/labrador-head_License.txt`.

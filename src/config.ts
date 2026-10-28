@@ -4,7 +4,7 @@
 export const PORT = 8787;
 
 export type EffectName = 'fire' | 'steam' | 'lightning';
-export type HeadVariant = 'oz' | 'scan' | 'procedural';
+export type HeadVariant = 'oz' | 'scan' | 'procedural' | 'labrador';
 
 /** Presentation clickers send these keys. The setup panel shows the last key pressed. */
 export const KEY_MAP: Record<string, EffectName> = {

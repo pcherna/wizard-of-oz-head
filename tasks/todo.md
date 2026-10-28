@@ -36,6 +36,10 @@ Plan: `.claude/plans/i-want-to-create-smooth-sloth.md`
 - Silent Studio Display Speakers turned out to be a macOS per-device mute (volume 0, mute on), not the app. Its channels are fine: 8 channels, stereo pair 1,2.
 - show.sh refuses to start if port 8787 is busy. Otherwise it would attach to a running dev server.
 
+- Labrador head (Oct 28): "Dog" by all of life, CC BY 4.0. Full-body mesh, mouth modeled open about 16°. The shader closes it at silence (jawRest 0.27) and opens up to 24° (jawMax 0.42).
+- The Lab's jaw split needs three lines across the width. Its outer upper teeth hang lower than its midline teeth, and a single line put them on the lower jaw.
+- Debug pins: `?yaw=1.2` holds the head angle, `?jaw=1` holds the mouth open.
+
 ## Measurements
 - Latency (AirPods):
 - Latency (wired):
