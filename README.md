@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:8787/` in Chrome and click once to start audio. Add `?demo` to drive the mouth with fake speech and no mic.
+Open `http://localhost:8787/` in Chrome. Then click, or press a clicker button such as PageUp, PageDown or `b`, to start. Chrome won't start sound, the mic or fullscreen until someone clicks or presses a key, and that first press only starts the show. Show mode starts without this step. Add `?demo` to drive the mouth with fake speech and no mic.
 
 For the show, connect the projector and run:
 
@@ -34,7 +34,7 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 
 Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`, or to `MIC_TOGGLE_KEYS` for muting.
 
-Many clickers also have a "start show" button that sends F5 and Esc in turn. Each press mutes or unmutes the mic, so it works as a mute button. Muting silences the voice and closes the mouth, and any reverb already playing dies out. While muted, the wizard's eyes dim to a faint glow, so you can see the state from behind the curtain. The phone remote and the setup panel show it too, and the remote can toggle it. The mic is live every time the app starts.
+Many clickers also have a "start show" button that sends F5 and Esc in turn. Each press mutes or unmutes the mic, so it works as a mute button. Muting silences the voice and closes the mouth, and any reverb already playing dies out. While muted, the wizard's eyes dim to a faint glow, so you can see the state from behind the curtain. The phone remote and the setup panel show it too, and the remote can toggle it. The mic starts muted every time the app starts, so unmute when you're ready to speak.
 
 Unmuting takes effect after about a third of a second. Sound reaches the app late, by about 0.2 seconds with AirPods, so the wait keeps your last words before unmuting from leaking out. The eyes brighten when the mic actually opens, so wait for them before you speak. To change the wait, edit `unmuteHoldSec` in `src/config.ts`.
 
@@ -50,6 +50,7 @@ The server prints the remote URL at startup, and the setup panel shows it too. I
 
 Press `s` to open it.
 
+- **Overall brightness:** dims the whole picture, effects and lightning included, if the projection is too bright. Black stays black, and the setup panel stays readable.
 - **Mic and Speakers:** pick the mic and the room speakers. Always pick the speakers explicitly. If you don't, macOS can move the output onto the AirPods when they become the input.
 - **Cue tones:** where the mute and unmute tones play. Pick the performer's AirPods, and only the performer hears them: two falling notes for muted, two rising notes for live. The voice and effects stay on the speakers. Off plays no tones. The unmute tone plays while the mic is still shut, so the mic can't pick it up.
 - **Test speakers:** plays a short beep through the chosen output. If one speaker stays silent while others work, open Audio MIDI Setup and check that device's volume and Mute box. macOS keeps a separate volume for each device, and the menu-bar slider only changes the current default.
@@ -59,8 +60,8 @@ Press `s` to open it.
 - **Head scale and height:** fit the head to the screen or scrim.
 - **Shine:** strength of the glossy highlight on the head. 0 is fully matte.
 - **Rim glow:** strength of the green glow around the head's outline. 0 turns it off.
-- **Organ backdrop:** draws the pipe organ from the film's throne room behind the head: a stepped case of fire-lit pipes between glowing green columns. The pipes brighten when the fire flares. 0 turns it off and leaves the background black, which a scrim or Pepper's ghost needs.
-- **Oz sculpt:** one slider per distortion of the Oz head: dome width, start and height, forehead ridges, brow, eye sockets, nose, cheek folds, jaw taper, chin drop, feature size and feature height. Dome start sets how low on the face the widening begins. Lower values widen the cheeks and jaw too. Feature size scales the eyes, nose and mouth together without changing the head outline, and Feature height moves them up or down. Every other slider at 0 turns its distortion off. Reset restores the defaults.
+- **Organ backdrop:** draws the pipe organ from the film's throne room behind the head: a stepped case of fire-lit pipes between glowing green columns, with dark silver steam pipes under the steam vents. The organ pipes brighten when the fire flares. 0 turns it off and leaves the background black, which a scrim or Pepper's ghost needs.
+- **Oz sculpt:** shown only when the Oz head is selected. One slider per distortion of the Oz head: dome width, start and height, forehead ridges, brow, eye sockets, nose, cheek folds, jaw taper, chin drop, feature size and feature height. Dome start sets how low on the face the widening begins. Lower values widen the cheeks and jaw too. Feature size scales the eyes, nose and mouth together without changing the head outline, and Feature height moves them up or down. Every other slider at 0 turns its distortion off. Reset restores the defaults.
 
 Settings save in the browser. The show profile in `.chrome-show-profile` keeps its own copy, so tune in show mode.
 

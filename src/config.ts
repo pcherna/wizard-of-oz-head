@@ -44,6 +44,8 @@ export interface Settings {
   headRim: number;
   /** Brightness of the film's pipe-organ backdrop, 0 (off, pure black) .. 1.5. */
   backdrop: number;
+  /** Dims the whole picture for a projector that is too bright, 0.1 .. 1. */
+  brightness: number;
   /** Oz sculpt strengths, in mesh units. See oz-sculpt.ts. */
   ozDome: number;
   /** Height on the face where the dome widening begins (chin ≈ -0.6, lips ≈ 0.45, eyes ≈ 1.8). */
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   headShine: 0.38,
   headRim: 0.61,
   backdrop: 0,
+  brightness: 1,
   ...OZ_SCULPT_DEFAULTS,
   // Chrome assigns device ids per browser profile, so these stay on the system default.
   inputId: '',

@@ -6,6 +6,7 @@ import { CUE_OFF } from '../audio/cue';
 type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
 
 const SLIDERS: [NumericKey, string, number, number, number][] = [
+  ['brightness', 'Overall brightness', 0.1, 1, 0.01],
   ['volume', 'Volume', 0, 2, 0.01],
   ['pitch', 'Pitch', 0.5, 1, 0.01],
   ['reverbWet', 'Reverb', 0, 1, 0.01],
@@ -65,8 +66,10 @@ export class SetupPanel {
         <option value="labrador">Labrador</option>
       </select></label>
       <div class="sliders"></div>
-      <h3>Oz sculpt <button class="reset-sculpt">Reset</button></h3>
-      <div class="sculpt"></div>
+      <section class="oz-sculpt">
+        <h3>Oz sculpt <button class="reset-sculpt">Reset</button></h3>
+        <div class="sculpt"></div>
+      </section>
       <div class="meter"><div></div></div>
       <pre class="readout"></pre>
       <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.<br>
@@ -90,7 +93,13 @@ export class SetupPanel {
     this.meter = this.el.querySelector('.meter > div')!;
     this.readout = this.el.querySelector('.readout')!;
 
+    // The sculpt only reshapes the Oz head, so hide its sliders for the others.
+    const sculptSection = this.el.querySelector<HTMLElement>('.oz-sculpt')!;
+    const showSculpt = () => (sculptSection.hidden = store.value.headVariant !== 'oz');
+    showSculpt();
+
     store.subscribe((changed) => {
+      if (changed.headVariant !== undefined) showSculpt();
       for (const [key, input] of this.sliders) {
         if (changed[key] !== undefined) {
           input.value = String(changed[key]);

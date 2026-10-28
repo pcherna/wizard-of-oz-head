@@ -12,6 +12,7 @@ import { Steam, STEAM_BURST_SEC } from './steam';
 import { Lightning } from './lightning';
 import { SetupPanel } from './setup-panel';
 import { Backdrop } from './backdrop';
+import { SteamPipes } from './pipes';
 import { CueTones } from '../audio/cue';
 
 const params = new URLSearchParams(location.search);
@@ -28,12 +29,20 @@ const steam = new Steam();
 const backdrop = new Backdrop();
 backdrop.setBrightness(store.value.backdrop);
 stage.scene.add(backdrop.mesh);
+const pipes = new SteamPipes();
+pipes.setBrightness(store.value.backdrop);
+stage.scene.add(pipes.group);
 stage.scene.add(fire.group, steam.composite);
 
 let voice: Voice | null = null;
 let sfx: Sfx | null = null;
 let lipsync = new LipSync(null);
 const lightning = new Lightning(document.querySelector('#flash')!, () => sfx?.thunder());
+function applyBrightness(brightness: number) {
+  stage.setBrightness(brightness);
+  lightning.brightness = brightness;
+}
+applyBrightness(store.value.brightness);
 const panel = new SetupPanel(store);
 panel.onTestTone = () => voice?.testTone();
 const socket = new RelaySocket();
@@ -80,7 +89,11 @@ store.subscribe((changed) => {
   if (changed.headVariant) loadHead(changed.headVariant);
   if (changed.headShine !== undefined) head?.setShine(changed.headShine);
   if (changed.headRim !== undefined) head?.setRimGlow(changed.headRim);
-  if (changed.backdrop !== undefined) backdrop.setBrightness(changed.backdrop);
+  if (changed.backdrop !== undefined) {
+    backdrop.setBrightness(changed.backdrop);
+    pipes.setBrightness(changed.backdrop);
+  }
+  if (changed.brightness !== undefined) applyBrightness(changed.brightness);
   if (Object.keys(changed).some((k) => k in OZ_SCULPT_DEFAULTS)) head?.setSculpt(store.value);
   if (changed.headScale !== undefined || changed.headY !== undefined) head?.setPlacement(store.value.headScale, store.value.headY);
   if (changed.inputId !== undefined && !demo) voice?.setInput(changed.inputId).catch(showError);
@@ -97,8 +110,9 @@ function broadcastSettings() {
 
 // --- Inputs: clicker / keyboard and the phone remote -------------------------
 
-// The mic starts live on every load. Mute is never saved, so a reload can't leave the wizard silent.
-let micMuted = false;
+// The mic starts muted on every load, so nothing goes out until the performer unmutes.
+// Mute is never saved: a reload always comes back muted.
+let micMuted = true;
 
 /** When the mic actually opens after an unmute. The eyes brighten then, not at the key press. */
 let micOpensAt = 0;
@@ -131,6 +145,13 @@ addEventListener('keydown', (e) => {
     return;
   }
   const effect = KEY_MAP[e.key];
+  if (effect && !startEl.hidden) {
+    // Chrome won't start audio, the mic or fullscreen until someone clicks or presses a key.
+    // A clicker press counts, so the first one starts the show instead of firing its effect.
+    e.preventDefault();
+    if (!e.repeat) start(true);
+    return;
+  }
   if (effect) {
     e.preventDefault();
     trigger(effect);
@@ -248,6 +269,7 @@ function updatePixelScale() {
   steam.setSize(buffer.x, buffer.y);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
   steam.setHalfWidth(Math.tan((camera.fov * Math.PI) / 360) * 5.7 * camera.aspect);
+  pipes.setVentX(steam.ventX);
   backdrop.fit(camera);
 }
 addEventListener('resize', updatePixelScale);
@@ -274,6 +296,7 @@ function frame(now: number) {
   steam.update(clock, dt);
   lightning.update(clock);
   backdrop.update(clock, fire.intensity, lightning.level);
+  pipes.update(clock, fire.intensity);
   const micLive = !micMuted && clock >= micOpensAt;
   head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
   steam.renderDensity(stage.renderer, stage.camera);

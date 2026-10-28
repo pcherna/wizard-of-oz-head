@@ -64,6 +64,10 @@ const HALF_DENSITY = 0.44;
 /** The density buffer renders at half size: cheaper, and the softness suits steam. */
 const DENSITY_RES = 0.5;
 
+/** Where steam leaves each vent. The steam pipes end here. */
+export const VENT_Y = -1.2;
+export const VENT_Z = 0.3;
+
 const PER_SIDE = 400;
 const IDLE_RATE = 14;
 const BURST_RATE = 150;
@@ -171,6 +175,11 @@ export class Steam {
     this.uniforms.uPixelScale.value = scale * DENSITY_RES;
   }
 
+  /** Distance of each vent from the middle. */
+  get ventX(): number {
+    return this.vents[1].x;
+  }
+
   /** Keep the vents inside the frame on any projector aspect ratio. */
   setHalfWidth(halfWidth: number) {
     const x = Math.min(2.1, halfWidth * 0.72);
@@ -223,8 +232,8 @@ export class Steam {
     // A wide speed spread stretches the burst into a column. A narrow one piles puffs into a white cap.
     const speed = bursting ? 2.0 + Math.random() * 2.8 : 0.7 + Math.random() * 0.3;
     this.pos[k] = vent.x + (Math.random() - 0.5) * 0.1;
-    this.pos[k + 1] = -1.45;
-    this.pos[k + 2] = 0.3;
+    this.pos[k + 1] = VENT_Y;
+    this.pos[k + 2] = VENT_Z;
     this.vel[k] = vent.dir * (bursting ? 0.3 : 0.08) + (Math.random() - 0.5) * (bursting ? 0.4 : 0.25);
     this.vel[k + 1] = speed;
     this.vel[k + 2] = (Math.random() - 0.5) * 0.2;

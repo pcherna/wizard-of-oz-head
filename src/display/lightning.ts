@@ -12,6 +12,8 @@ const FLICKER: [number, number][] = [
 /** Full-screen white flicker plus thunder. `level` also lights the head. */
 export class Lightning {
   level = 0;
+  /** The overall brightness setting. The flash is an HTML overlay, outside the dimming pass. */
+  brightness = 1;
   private startedAt = -Infinity;
 
   constructor(private overlay: HTMLElement, private onStrike: () => void) {}
@@ -23,7 +25,7 @@ export class Lightning {
 
   update(t: number) {
     this.level = sample(t - this.startedAt);
-    this.overlay.style.opacity = String(this.level * 0.85);
+    this.overlay.style.opacity = String(this.level * 0.85 * this.brightness);
   }
 }
 
