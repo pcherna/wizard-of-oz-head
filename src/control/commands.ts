@@ -5,7 +5,9 @@ export type Message =
   | { type: 'effect'; effect: EffectName }
   | { type: 'settings'; settings: Partial<Settings> }
   /** A remote asks the display to broadcast its current settings. */
-  | { type: 'hello' };
+  | { type: 'hello' }
+  /** Asks the display to broadcast all of its settings, for copying them into the defaults. */
+  | { type: 'dump' };
 
 export function parseMessage(text: string): Message | null {
   try {

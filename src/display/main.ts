@@ -1,4 +1,4 @@
-import { KEY_MAP, LIPSYNC, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
+import { KEY_MAP, LIPSYNC, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
 import { SettingsStore } from '../settings';
 import { RelaySocket } from '../control/socket';
 import { Voice } from '../audio/voice';
@@ -13,6 +13,8 @@ import { SetupPanel } from './setup-panel';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
+/** `?yaw=0.5` holds the head still at that angle, for checking its shape. */
+const pinnedYaw = params.has('yaw') ? Number(params.get('yaw')) : null;
 
 const store = new SettingsStore();
 const stage = createStage(document.querySelector<HTMLCanvasElement>('#stage')!);
@@ -31,17 +33,23 @@ let socketUp = false;
 
 let head: Head | null = null;
 function loadHead(variant: Settings['headVariant']) {
-  Head.create(variant).then((next) => {
+  Head.create(variant, store.value).then((next) => {
     if (head) {
       stage.scene.remove(head.group);
       head.dispose();
     }
     head = next;
     head.setPlacement(store.value.headScale, store.value.headY);
+    head.pinnedYaw = pinnedYaw;
+    head.setShine(store.value.headShine);
+    head.setRimGlow(store.value.headRim);
     stage.scene.add(head.group);
   }, showError);
 }
 loadHead(store.value.headVariant);
+
+// Dev-only handle for poking at the live head from the browser console.
+if (import.meta.env.DEV) Object.assign(window, { wizard: { get head() { return head; } } });
 
 let clock = 0;
 /** Clicker and remote triggers. Shout-driven flares skip this, so they stay silent under the voice. */
@@ -62,6 +70,9 @@ function trigger(effect: EffectName) {
 store.subscribe((changed) => {
   voice?.apply(changed);
   if (changed.headVariant) loadHead(changed.headVariant);
+  if (changed.headShine !== undefined) head?.setShine(changed.headShine);
+  if (changed.headRim !== undefined) head?.setRimGlow(changed.headRim);
+  if (Object.keys(changed).some((k) => k in OZ_SCULPT_DEFAULTS)) head?.setSculpt(store.value);
   if (changed.headScale !== undefined || changed.headY !== undefined) head?.setPlacement(store.value.headScale, store.value.headY);
   if (changed.inputId !== undefined && !demo) voice?.setInput(changed.inputId).catch(showError);
   if (changed.outputId !== undefined) voice?.setOutput(changed.outputId).catch(showError);
@@ -94,6 +105,7 @@ socket.onStatus = (up) => (socketUp = up);
 socket.onMessage = (msg) => {
   if (msg.type === 'effect') trigger(msg.effect);
   else if (msg.type === 'hello') broadcastSettings();
+  else if (msg.type === 'dump') socket.send({ type: 'settings', settings: store.value });
   else if (msg.type === 'settings') {
     const allowed: Partial<Settings> = {};
     for (const k of REMOTE_SETTING_KEYS) {

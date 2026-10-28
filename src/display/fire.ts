@@ -3,6 +3,7 @@ import * as THREE from 'three';
 const fireFragment = /* glsl */ `
 uniform float uTime;
 uniform float uIntensity;
+uniform float uWidth;
 varying vec2 vUv;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -26,10 +27,12 @@ void main() {
   float height = 0.14 + 0.24 * h;
   float y = uv.y / height;
   // Noise stretched vertically rises faster than it spreads, which makes tall thin tongues.
-  vec2 q = vec2(uv.x * 9.0, uv.y * 1.6 - uTime * 1.9);
+  // Noise scales with world width, so changing FIRE_WIDTH keeps the tongue size.
+  float x = uv.x * uWidth;
+  vec2 q = vec2(x * 2.15, uv.y * 1.6 - uTime * 1.9);
   // fbm clusters around 0.5. Spread it to 0..1 so tongue heights vary a lot.
   float n = smoothstep(0.3, 0.7, fbm(q + vec2(fbm(q * 0.6 + uTime * 0.15) * 1.5, 0.0)));
-  float n2 = smoothstep(0.3, 0.7, fbm(vec2(uv.x * 18.0, uv.y * 3.0 - uTime * 3.4)));
+  float n2 = smoothstep(0.3, 0.7, fbm(vec2(x * 4.3, uv.y * 3.0 - uTime * 3.4)));
   float edge = smoothstep(0.0, 0.22, uv.x) * smoothstep(1.0, 0.78, uv.x);
   // Noise eats more of the flame toward the top, so each tongue tapers to a point.
   float v = (1.0 - y) * 1.5 - (1.0 - n) * (0.3 + 1.6 * y) - (1.0 - n2) * 0.3 * y;
@@ -62,6 +65,8 @@ void main() {
 }
 `;
 
+/** World-unit width of the fire bed. The head is about 1.1 units wide. */
+const FIRE_WIDTH = 2.8;
 const EMBERS = 160;
 const FLARE_PEAK = 1.6;
 const FLARE_DECAY_SEC = 0.9;
@@ -73,7 +78,7 @@ export class Fire {
   intensity = 1;
   private flareTarget = 0;
   private flare = 0;
-  private uniforms = { uTime: { value: 0 }, uIntensity: { value: 1 } };
+  private uniforms = { uTime: { value: 0 }, uIntensity: { value: 1 }, uWidth: { value: FIRE_WIDTH } };
   private emberUniforms = { uPixelScale: { value: 800 } };
   private emberPos = new Float32Array(EMBERS * 3);
   private emberLife = new Float32Array(EMBERS);
@@ -82,7 +87,7 @@ export class Fire {
 
   constructor() {
     const plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.2, 2.8),
+      new THREE.PlaneGeometry(FIRE_WIDTH, 2.8),
       new THREE.ShaderMaterial({
         uniforms: this.uniforms,
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -140,7 +145,7 @@ export class Fire {
   }
 
   private respawn(i: number, life: number) {
-    this.emberPos[i * 3] = (Math.random() - 0.5) * 3;
+    this.emberPos[i * 3] = (Math.random() - 0.5) * FIRE_WIDTH * 0.7;
     this.emberPos[i * 3 + 2] = 0.8 + (Math.random() - 0.5) * 0.4;
     this.emberLife[i] = life;
     this.emberSpeed[i] = 0.3 + Math.random() * 0.5;

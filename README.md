@@ -48,6 +48,9 @@ Press `s` to open it.
 - **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch.
 - **Mouth sensitivity:** the voice level that opens the jaw fully. Watch the meter while you speak normally. Aim for about half.
 - **Head scale and height:** fit the head to the screen or scrim.
+- **Shine:** strength of the glossy highlight on the head. 0 is fully matte.
+- **Rim glow:** strength of the green glow around the head's outline. 0 turns it off.
+- **Oz sculpt:** one slider per distortion of the Oz head: dome width, start and height, forehead ridges, brow, eye sockets, nose, cheek folds, jaw taper, chin drop, feature size and feature height. Dome start sets how low on the face the widening begins. Lower values widen the cheeks and jaw too. Feature size scales the eyes, nose and mouth together without changing the head outline, and Feature height moves them up or down. Every other slider at 0 turns its distortion off. Reset restores the defaults.
 
 Settings save in the browser. The show profile in `.chrome-show-profile` keeps its own copy, so tune in show mode.
 

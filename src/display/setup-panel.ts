@@ -1,4 +1,4 @@
-import type { Settings } from '../config';
+import { OZ_SCULPT_DEFAULTS, type Settings } from '../config';
 import { listAudioDevices } from '../audio/voice';
 import type { SettingsStore } from '../settings';
 
@@ -13,6 +13,24 @@ const SLIDERS: [NumericKey, string, number, number, number][] = [
   ['fireBase', 'Fire level', 0, 2, 0.01],
   ['headScale', 'Head scale', 0.5, 1.8, 0.01],
   ['headY', 'Head height', -1, 1, 0.01],
+  ['headShine', 'Shine', 0, 1, 0.01],
+  ['headRim', 'Rim glow', 0, 1.5, 0.01],
+];
+
+/** One slider per Oz distortion. */
+const SCULPT_SLIDERS: [NumericKey, string, number, number, number][] = [
+  ['ozDome', 'Dome width', 0, 1.2, 0.01],
+  ['ozDomeStart', 'Dome start', -0.6, 2.2, 0.01],
+  ['ozCrown', 'Dome height', 0, 1.5, 0.01],
+  ['ozForehead', 'Forehead ridges', 0, 0.5, 0.01],
+  ['ozBrow', 'Brow', 0, 0.45, 0.01],
+  ['ozEyes', 'Eye sockets', 0, 0.3, 0.01],
+  ['ozNose', 'Nose', 0, 0.35, 0.01],
+  ['ozFolds', 'Cheek folds', 0, 0.25, 0.01],
+  ['ozTaper', 'Jaw taper', 0, 0.6, 0.01],
+  ['ozChin', 'Chin drop', 0, 0.5, 0.01],
+  ['ozFeatures', 'Feature size', 0.6, 1.3, 0.01],
+  ['ozFeatureY', 'Feature height', -0.5, 0.5, 0.01],
 ];
 
 /** Operator panel, toggled with S. Device pickers, tuning sliders, and live readouts. */
@@ -37,10 +55,13 @@ export class SetupPanel {
       <label>Speakers <select data-k="outputId"></select></label>
       <button class="test-tone">Test speakers</button>
       <label>Head <select data-k="headVariant">
+        <option value="oz">Oz (sculpted scan)</option>
         <option value="scan">Scan (Lee Perry-Smith)</option>
         <option value="procedural">Procedural</option>
       </select></label>
       <div class="sliders"></div>
+      <h3>Oz sculpt <button class="reset-sculpt">Reset</button></h3>
+      <div class="sculpt"></div>
       <div class="meter"><div></div></div>
       <pre class="readout"></pre>
       <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.</p>`;
@@ -55,21 +76,9 @@ export class SetupPanel {
     this.outputSel.onchange = () => store.update({ outputId: this.outputSel.value });
     this.el.querySelector<HTMLButtonElement>('.test-tone')!.onclick = () => this.onTestTone();
 
-    const box = this.el.querySelector('.sliders')!;
-    for (const [key, label, min, max, step] of SLIDERS) {
-      const row = document.createElement('label');
-      row.innerHTML = `${label} <input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
-      const input = row.querySelector('input')!;
-      const out = row.querySelector('output')!;
-      input.value = String(store.value[key]);
-      out.textContent = input.value;
-      input.oninput = () => {
-        out.textContent = input.value;
-        store.update({ [key]: Number(input.value) });
-      };
-      this.sliders.set(key, input);
-      box.append(row);
-    }
+    this.addSliders(this.el.querySelector('.sliders')!, SLIDERS);
+    this.addSliders(this.el.querySelector('.sculpt')!, SCULPT_SLIDERS);
+    this.el.querySelector<HTMLButtonElement>('.reset-sculpt')!.onclick = () => store.update({ ...OZ_SCULPT_DEFAULTS });
     this.meter = this.el.querySelector('.meter > div')!;
     this.readout = this.el.querySelector('.readout')!;
 
@@ -86,6 +95,24 @@ export class SetupPanel {
       .then((r) => r.json() as Promise<{ remoteUrls: string[] }>)
       .then((info) => (this.remoteUrl = info.remoteUrls[0] ?? this.remoteUrl))
       .catch(() => {});
+  }
+
+  private addSliders(box: Element, defs: [NumericKey, string, number, number, number][]) {
+    const store = this.store;
+    for (const [key, label, min, max, step] of defs) {
+      const row = document.createElement('label');
+      row.innerHTML = `${label} <input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
+      const input = row.querySelector('input')!;
+      const out = row.querySelector('output')!;
+      input.value = String(store.value[key]);
+      out.textContent = input.value;
+      input.oninput = () => {
+        out.textContent = input.value;
+        store.update({ [key]: Number(input.value) });
+      };
+      this.sliders.set(key, input);
+      box.append(row);
+    }
   }
 
   toggle() {

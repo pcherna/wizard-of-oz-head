@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { HeadVariant } from '../config';
 import type { MouthState } from '../audio/lipsync';
+import { FACE_MID_X, OzSculptor, mapFeature, type SculptParams } from './oz-sculpt';
 
 /** Landmarks in the mesh's own coordinates (Lee Perry-Smith frame: +z forward, nose tip ≈ (0, 1.1, 2.56)). */
 interface Rig {
+  /** Left-right midline of the face. */
+  midX: number;
   seamY: number;
   chinY: number;
   neckY: number;
@@ -16,18 +19,31 @@ interface Rig {
 }
 
 const SCAN_RIG: Rig = {
+  midX: FACE_MID_X,
   seamY: 0.45,
   chinY: -0.55,
   neckY: -0.85,
   mouthZ: 2.24,
   mouthHalfW: 0.5,
   hinge: new THREE.Vector3(0, 0.95, -0.2),
-  eyeL: new THREE.Vector3(-0.62, 1.78, 1.75),
-  eyeR: new THREE.Vector3(0.62, 1.78, 1.75),
+  // The eyeballs bulge at x -0.71 and 0.52, about 0.6 either side of the midline.
+  eyeL: new THREE.Vector3(FACE_MID_X - 0.62, 1.78, 1.75),
+  eyeR: new THREE.Vector3(FACE_MID_X + 0.62, 1.78, 1.75),
+};
+
+/** The sculpt sinks the eyes, and setSculpt() moves the chin landmark with the chin drop. */
+const OZ_RIG: Rig = {
+  ...SCAN_RIG,
+  // Fade the neck high. The narrowed chin would otherwise sit on a wide neck like a funnel.
+  neckY: -0.3,
+  // Centered on the scan's closed lid line, which sits a little below the eyeball's middle.
+  eyeL: new THREE.Vector3(FACE_MID_X - 0.66, 1.71, 1.65),
+  eyeR: new THREE.Vector3(FACE_MID_X + 0.66, 1.71, 1.65),
 };
 
 const PROCEDURAL_RIG: Rig = {
   ...SCAN_RIG,
+  midX: 0,
   neckY: -0.6,
   mouthZ: 1.95,
   eyeL: new THREE.Vector3(-0.6, 1.78, 1.6),
@@ -46,6 +62,7 @@ uniform float uSeamY;
 uniform float uChinY;
 uniform float uMouthZ;
 uniform float uMouthHalfW;
+uniform float uMidX;
 uniform vec3 uHinge;
 uniform float uJawMax;
 varying vec3 vNormalW;
@@ -55,7 +72,7 @@ varying float vJawW;
 varying vec2 vUv;
 
 float mouthMask(vec3 p) {
-  return (1.0 - smoothstep(uMouthHalfW * 0.75, uMouthHalfW * 1.25, abs(p.x)))
+  return (1.0 - smoothstep(uMouthHalfW * 0.75, uMouthHalfW * 1.25, abs(p.x - uMidX)))
        * smoothstep(uMouthZ - 0.7, uMouthZ - 0.25, p.z);
 }
 
@@ -76,7 +93,7 @@ void main() {
   float nearSeam = exp(-pow((position.y - uSeamY) / 0.3, 2.0));
 
   // Wide "ee" or rounded "oo".
-  p.x *= 1.0 + uWidth * 0.12 * m * nearSeam * (0.3 + uJaw);
+  p.x = uMidX + (p.x - uMidX) * (1.0 + uWidth * 0.12 * m * nearSeam * (0.3 + uJaw));
   // The upper lip lifts a little as the mouth opens.
   float upper = m * smoothstep(uSeamY - 0.01, uSeamY + 0.03, position.y) * exp(-pow((position.y - uSeamY) / 0.18, 2.0));
   p.y += upper * uJaw * 0.07;
@@ -109,11 +126,18 @@ uniform float uFlash;
 uniform float uEyeGlow;
 uniform float uUseMap;
 uniform float uNeckY;
+uniform float uChinY;
+uniform float uRimGlow;
+uniform float uShine;
 uniform float uJaw;
 uniform float uSeamY;
 uniform float uMouthHalfW;
+uniform float uMidX;
 uniform vec3 uEyeL;
 uniform vec3 uEyeR;
+uniform float uEyeOpen;
+uniform float uEyeScale;
+uniform vec2 uGaze;
 uniform sampler2D uMap;
 varying vec3 vNormalW;
 varying vec3 vPosW;
@@ -121,8 +145,26 @@ varying vec3 vLocal;
 varying float vJawW;
 varying vec2 vUv;
 
+// A painted eye: an almond of glowing white, a bright iris and a dark pupil, drawn over the
+// scan's closed lids. d is the offset from the eye center. Returns color and coverage.
+vec4 paintEye(vec3 d) {
+  vec2 q = d.xy / uEyeScale;
+  float onFace = 1.0 - smoothstep(0.3, 0.5, abs(d.z));
+  // The almond's height closes with the lids.
+  float almond = length(vec2(q.x / 0.3, q.y / (0.15 * max(uEyeOpen, 0.001))));
+  float cover = (1.0 - smoothstep(0.8, 1.0, almond)) * onFace * step(0.02, uEyeOpen);
+  float r = length(q - uGaze) / 0.13;
+  // Whites stay dimmer than the iris, so bloom doesn't wash the iris out.
+  vec3 c = vec3(0.42, 0.58, 0.36);
+  c = mix(c, vec3(0.95, 1.15, 0.15), 1.0 - smoothstep(0.85, 1.0, r));
+  c = mix(c, vec3(0.0, 0.02, 0.0), 1.0 - smoothstep(0.48, 0.58, r));
+  return vec4(c, cover);
+}
+
 void main() {
   float neck = smoothstep(uNeckY - 0.5, uNeckY + 0.25, vLocal.y);
+  // Keep the front of the chin where the neck fades, so the face ends in a point.
+  neck = max(neck, smoothstep(1.2, 1.7, vLocal.z) * smoothstep(uChinY - 0.2, uChinY + 0.1, vLocal.y));
   if (neck <= 0.001) discard;
 
   vec3 N = normalize(vNormalW);
@@ -143,17 +185,17 @@ void main() {
   col += uFireColor * under * 0.3 * uFire * flicker;
 
   float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.2);
-  col += uRim * fres * 0.55;
+  col += uRim * fres * uRimGlow;
   vec3 H = normalize(lKey + V);
-  col += vec3(0.6, 1.0, 0.6) * pow(max(dot(N, H), 0.0), 40.0) * 0.25;
+  col += vec3(0.6, 1.0, 0.6) * pow(max(dot(N, H), 0.0), 40.0) * 0.25 * uShine;
 
-  vec3 dl = vLocal - uEyeL;
-  vec3 dr = vLocal - uEyeR;
-  float eye = exp(-dot(dl, dl) / 0.025) + exp(-dot(dr, dr) / 0.025);
-  col += vec3(0.75, 1.0, 0.45) * eye * uEyeGlow;
+  vec4 eyeL = paintEye(vLocal - uEyeL);
+  vec4 eyeR = paintEye(vLocal - uEyeR);
+  col = mix(col, eyeL.rgb * uEyeGlow, eyeL.a);
+  col = mix(col, eyeR.rgb * uEyeGlow, eyeR.a);
 
   // Mouth interior: the faces stretched across the lip seam.
-  float inMouth = (1.0 - smoothstep(uMouthHalfW * 0.8, uMouthHalfW * 1.2, abs(vLocal.x)))
+  float inMouth = (1.0 - smoothstep(uMouthHalfW * 0.8, uMouthHalfW * 1.2, abs(vLocal.x - uMidX)))
                 * exp(-pow((vLocal.y - uSeamY) / 0.25, 2.0));
   float gap = smoothstep(0.02, 0.2, vJawW) * (1.0 - smoothstep(0.8, 0.98, vJawW));
   col = mix(col, vec3(0.0, 0.025, 0.0), clamp(inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
@@ -173,7 +215,13 @@ export class Head {
   private nod = 0;
   private blinkAt = 2;
   private blink = 0;
+  private gaze = new THREE.Vector2();
+  private gazeTarget = new THREE.Vector2();
+  private glanceAt = 1;
   private placeY = 0;
+  /** Holds the head still at this yaw (radians), for comparing against references. */
+  pinnedYaw: number | null = null;
+  private sculptor: OzSculptor | null = null;
 
   private constructor(geometry: THREE.BufferGeometry, rig: Rig, map: THREE.Texture | null) {
     this.uniforms = {
@@ -185,6 +233,7 @@ export class Head {
       uNeckY: { value: rig.neckY },
       uMouthZ: { value: rig.mouthZ },
       uMouthHalfW: { value: rig.mouthHalfW },
+      uMidX: { value: rig.midX },
       uHinge: { value: rig.hinge },
       uEyeL: { value: rig.eyeL },
       uEyeR: { value: rig.eyeR },
@@ -194,7 +243,12 @@ export class Head {
       uTime: { value: 0 },
       uFire: { value: 1 },
       uFlash: { value: 0 },
-      uEyeGlow: { value: 0.5 },
+      uEyeGlow: { value: 1 },
+      uEyeOpen: { value: 1 },
+      uEyeScale: { value: 1 },
+      uGaze: { value: new THREE.Vector2() },
+      uShine: { value: 1 },
+      uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
     };
@@ -205,7 +259,7 @@ export class Head {
     this.setPlacement(1, 0);
   }
 
-  static async create(variant: HeadVariant): Promise<Head> {
+  static async create(variant: HeadVariant, sculpt: SculptParams): Promise<Head> {
     if (variant === 'procedural') return new Head(proceduralGeometry(), PROCEDURAL_RIG, null);
     const [gltf, map] = await Promise.all([
       new GLTFLoader().loadAsync('/models/LeePerrySmith.glb'),
@@ -217,7 +271,38 @@ export class Head {
       if (o instanceof THREE.Mesh && !geometry) geometry = o.geometry;
     });
     if (!geometry) throw new Error('No mesh in LeePerrySmith.glb');
-    return new Head(geometry, SCAN_RIG, map);
+    if (variant !== 'oz') return new Head(geometry, SCAN_RIG, map);
+    const sculptor = new OzSculptor(geometry);
+    const head = new Head(sculptor.geometry, OZ_RIG, map);
+    head.sculptor = sculptor;
+    head.setSculpt(sculpt);
+    return head;
+  }
+
+  /** Green edge glow strength: 0 is none. */
+  setRimGlow(strength: number) {
+    this.uniforms.uRimGlow.value = strength;
+  }
+
+  /** Specular highlight strength: 0 is matte, 1 is glossy. */
+  setShine(shine: number) {
+    this.uniforms.uShine.value = shine;
+  }
+
+  /** Reshape the Oz head live. Ignored by the other variants. */
+  setSculpt(params: SculptParams) {
+    if (!this.sculptor) return;
+    this.sculptor.apply(params);
+    const u = this.uniforms;
+    u.uChinY.value = SCAN_RIG.chinY - params.ozChin;
+    // The lip line must match the sculpted mesh exactly, or the jaw splits the face in the wrong place.
+    const seam = mapFeature(new THREE.Vector3(OZ_RIG.midX, OZ_RIG.seamY, OZ_RIG.mouthZ), params);
+    u.uSeamY.value = seam.y;
+    u.uMouthZ.value = seam.z;
+    u.uMouthHalfW.value = OZ_RIG.mouthHalfW * params.ozFeatures;
+    u.uEyeScale.value = params.ozFeatures;
+    u.uEyeL.value = mapFeature(OZ_RIG.eyeL, params);
+    u.uEyeR.value = mapFeature(OZ_RIG.eyeR, params);
   }
 
   setPlacement(scale: number, y: number) {
@@ -239,8 +324,16 @@ export class Head {
       this.blinkAt = t + 3 + Math.random() * 3;
     }
     this.blink = Math.max(0, this.blink - dt / 0.15);
-    const lid = Math.sin(this.blink * Math.PI);
-    u.uEyeGlow.value = (0.45 + Math.min(mouth.level, 1.5) * 0.6) * (1 - lid);
+    u.uEyeOpen.value = 1 - Math.sin(this.blink * Math.PI);
+    u.uEyeGlow.value = 1 + Math.min(mouth.level, 1.5) * 0.5;
+
+    // The pupils glance somewhere new every 0.8–3 s, with a quick saccade.
+    if (t > this.glanceAt) {
+      this.gazeTarget.set((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.05);
+      this.glanceAt = t + 0.8 + Math.random() * 2.2;
+    }
+    this.gaze.lerp(this.gazeTarget, 1 - Math.exp(-dt / 0.04));
+    (u.uGaze.value as THREE.Vector2).copy(this.gaze);
 
     // Syllable onsets kick a damped spring, so speech reads as emphatic nods.
     this.nodVel += mouth.onset * 0.9;
@@ -249,9 +342,13 @@ export class Head {
 
     const energy = 1 + Math.min(mouth.level, 1.5) * 0.4;
     const g = this.group;
-    g.rotation.y = (0.28 * noise1(t * 0.11) + 0.07 * noise1(t * 0.43 + 10)) * energy;
-    g.rotation.x = 0.1 * noise1(t * 0.17 + 20) + this.nod - mouth.level * 0.03;
-    g.rotation.z = 0.04 * noise1(t * 0.13 + 30);
+    if (this.pinnedYaw !== null) {
+      g.rotation.set(0, this.pinnedYaw, 0);
+    } else {
+      g.rotation.y = (0.28 * noise1(t * 0.11) + 0.07 * noise1(t * 0.43 + 10)) * energy;
+      g.rotation.x = 0.1 * noise1(t * 0.17 + 20) + this.nod - mouth.level * 0.03;
+      g.rotation.z = 0.04 * noise1(t * 0.13 + 30);
+    }
     g.position.y = -0.02 + this.placeY + 0.025 * Math.sin(t * 0.9);
   }
 
