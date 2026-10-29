@@ -41,6 +41,9 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | `F5`, `Esc` | Mute or unmute the mic |
 | `s` | Setup panel |
 | `f` | Back to fullscreen |
+| `u` | Flip the picture upside down |
+| `k` | Show or hide the keystone handles |
+| `r` | Reset the keystone, while the handles show |
 
 Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`, or to `MIC_TOGGLE_KEYS` for muting.
 
@@ -51,6 +54,28 @@ Unmuting takes effect after about a third of a second. Sound reaches the app lat
 The app stops F5 from reloading the page. In fullscreen it also locks the Esc key, so only holding Esc for about 2 seconds leaves fullscreen. Press `f` to go back. In show mode Chrome runs in kiosk mode, where Esc never leaves fullscreen.
 
 A loud shout also flares the fire, at most once every 2 seconds.
+
+## Upside-down projector
+
+If the projector mounts better upside down, press U. The whole page turns 180°, including the setup panel. Press U again to turn it back. The flip saves with the other settings.
+
+The flip costs no frame rate or sharpness. Most projectors also have a ceiling-mount setting that flips the picture. If yours has one, use it instead of U. The mouse pointer on the wall then moves the right way too.
+
+If you use both U and keystone correction, flip first, then drag the corners. Pressing U later turns the corrected shape around too, so it no longer fits the wall. While you drag, the mouse pointer on the wall moves the opposite way to your hand. The projector shows the Mac's own pointer upside down.
+
+## Keystone correction
+
+If the projector sits off-angle, the picture on the wall is a tilted shape instead of a rectangle. To correct it:
+
+1. Press K. A red handle appears in each corner of the picture.
+2. Drag each handle until that corner of the picture sits where you want it on the wall.
+3. Press K again to hide the handles.
+
+To go back to the uncorrected picture, press K, then press R.
+
+The corners save with the other settings, so they survive a reload and a server restart. They're fractions of the screen, so they also survive a change of resolution. The lightning flash follows the corrected shape, so it never lights the wall outside the picture.
+
+The correction costs no frame rate. Any correction softens the picture a little, and the narrowed side loses some resolution. If you can, aim the projector straight instead. An uncorrected picture is pixel-exact.
 
 ## Phone remote
 

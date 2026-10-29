@@ -66,6 +66,10 @@ export interface Settings {
   outputId: string;
   /** Where mute/unmute cue tones play, such as the performer's AirPods. 'off' plays none. */
   cueOutputId: string;
+  /** Turns the whole page 180°, for a projector mounted upside down. */
+  flipped: boolean;
+  /** Where each picture corner lands, as fractions of the screen: top-left, top-right, bottom-right, bottom-left. */
+  keystone: [number, number][];
 }
 
 /** Starting strengths for the Oz sculpt, tuned by eye on Oct 27. The setup panel's reset button restores these. */
@@ -103,6 +107,8 @@ export const DEFAULT_SETTINGS: Settings = {
   inputId: '',
   outputId: '',
   cueOutputId: 'off',
+  flipped: false,
+  keystone: [[0, 0], [1, 0], [1, 1], [0, 1]],
 };
 
 /** Settings the phone remote may change. Device ids stay on the display Mac. */

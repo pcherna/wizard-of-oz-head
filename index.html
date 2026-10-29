@@ -7,6 +7,12 @@
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
       body.show-cursor { cursor: auto; }
+      /* Showing the keystone handles shows the pointer too. */
+      body:has(#keystone:not([hidden])) { cursor: auto; }
+      /* U flips the whole page, so the setup panel reads the right way up from an upside-down projector. */
+      html.flipped body { transform: rotate(180deg); }
+      /* Keystone warps the picture and the lightning flash together, so the flash stays inside the picture. */
+      #picture { position: fixed; inset: 0; transform-origin: 0 0; }
       #stage { display: block; width: 100vw; height: 100vh; }
       #flash { position: fixed; inset: 0; background: #eef4ff; opacity: 0; pointer-events: none; }
       #start {
@@ -16,7 +22,24 @@
       }
       #start small { max-width: 44ch; font: 16px/1.5 system-ui, sans-serif; letter-spacing: 0; color: #fdd; }
       #start small:empty { display: none; }
-      #start[hidden], #error[hidden], #setup[hidden] { display: none; }
+      #start[hidden], #error[hidden], #setup[hidden], #keystone[hidden] { display: none; }
+      /* Keystone calibration: K shows a handle on each corner of the picture, above the setup panel. */
+      #keystone { position: relative; z-index: 1; }
+      #keystoneHelp {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap;
+        padding: 8px 16px; font: 15px system-ui, sans-serif; color: #fff; background: rgba(0, 0, 0, 0.6); border-radius: 999px;
+        pointer-events: none;
+      }
+      /* Each handle is a quarter-disc whose square corner sits on the picture corner, pointing in. */
+      .corner {
+        position: fixed; width: 48px; height: 48px; box-sizing: border-box;
+        border: 3px solid #fff; background: rgba(217, 83, 79, 0.6);
+        cursor: grab; touch-action: none;
+      }
+      .corner:nth-child(1) { border-bottom-right-radius: 100%; }
+      .corner:nth-child(2) { translate: -100% 0; border-bottom-left-radius: 100%; }
+      .corner:nth-child(3) { translate: -100% -100%; border-top-left-radius: 100%; }
+      .corner:nth-child(4) { translate: 0 -100%; border-top-right-radius: 100%; }
       #error {
         position: fixed; left: 16px; bottom: 16px; max-width: 60ch; padding: 8px 12px;
         font: 14px/1.4 system-ui, sans-serif; color: #fdd; background: #600; border-radius: 6px;
@@ -40,10 +63,16 @@
     </style>
   </head>
   <body>
-    <canvas id="stage"></canvas>
-    <div id="flash"></div>
+    <div id="picture">
+      <canvas id="stage"></canvas>
+      <div id="flash"></div>
+    </div>
     <div id="start">Click or press a clicker button to summon the Wizard</div>
     <div id="error" hidden></div>
+    <div id="keystone" hidden>
+      <div class="corner"></div><div class="corner"></div><div class="corner"></div><div class="corner"></div>
+      <div id="keystoneHelp">Drag the corners to square the picture. R resets. U flips. K hides the corners.</div>
+    </div>
     <script type="module" src="/src/display/main.ts"></script>
   </body>
 </html>

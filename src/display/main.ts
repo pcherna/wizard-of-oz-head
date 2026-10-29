@@ -14,6 +14,7 @@ import { SetupPanel } from './setup-panel';
 import { Backdrop } from './backdrop';
 import { SteamPipes } from './pipes';
 import { CueTones } from '../audio/cue';
+import { Projection } from './projection';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -44,6 +45,7 @@ function applyBrightness(brightness: number) {
 }
 applyBrightness(store.value.brightness);
 const panel = new SetupPanel(store);
+const projection = new Projection(document.querySelector('#picture')!, document.querySelector('#keystone')!, store);
 panel.onTestTone = () => voice?.testTone();
 const socket = new RelaySocket();
 let socketUp = false;
@@ -137,6 +139,12 @@ addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') {
     enterFullscreen().catch(() => {});
     return;
+  }
+  // Projector fit. Skip Cmd-R and friends, so a reload doesn't also reset the corners.
+  if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === 'u' || e.key === 'U') return projection.toggleFlipped();
+    if (e.key === 'k' || e.key === 'K') return projection.toggleHandles();
+    if ((e.key === 'r' || e.key === 'R') && projection.handlesVisible) return projection.resetKeystone();
   }
   if (MIC_TOGGLE_KEYS.includes(e.key)) {
     // F5 would reload the page and Esc would leave fullscreen, so always swallow them.
