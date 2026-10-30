@@ -262,8 +262,13 @@ void main() {
     n = rotateAbout(n, along, twist);
   }
   // The model's mouth floor is sculpted as a second tongue, under the real one. Sink it flat
-  // while the tongue is out, so no tongue stays behind.
-  p.y -= aFloorDrop * smoothstep(0.0, 0.3, uTongue.x);
+  // while the tongue is out, so no tongue stays behind. Flattened, it faces up like a floor, or
+  // its rounded tip would still catch the light as if it faced the audience.
+  if (aFloorDrop > 0.0) {
+    float sunk = smoothstep(0.0, 0.3, uTongue.x);
+    p.y -= aFloorDrop * sunk;
+    n = normalize(mix(n, vec3(0.0, 1.0, 0.0), sunk));
+  }
   // Vampire: stretch each upper canine down from its root into a long fang.
   if (aFang.w > 0.0) p = aFang.xyz + (p - aFang.xyz) * vec3(1.0 + 0.3 * uFangs, 1.0 + 1.5 * uFangs, 1.0 + 0.3 * uFangs);
   vFang = aFang.w * uFangs;
@@ -563,9 +568,10 @@ export class Head implements FlingSource {
   private treatTossed = false;
   private treatMouth = new THREE.Vector3();
   private treatFlight = new THREE.Vector3();
-  /** Brightness of the rainbow behind the head, 0 to 1, and how much of its arc is drawn, signed by its starting side. */
+  /** Brightness of the rainbow behind the head, 0 to 1, how much of its arc is drawn, and the side it starts from (+1 the viewer's right). */
   rainbow = 0;
   rainbowArc = 0;
+  rainbowSide = 1;
 
   private constructor(
     geometry: THREE.BufferGeometry,
@@ -908,6 +914,7 @@ export class Head implements FlingSource {
     this.treatTossed = pose.treatFree > 0;
     this.rainbow = pose.rainbow;
     this.rainbowArc = pose.rainbowArc;
+    this.rainbowSide = this.trickDir;
   }
 
   /** Blends between the palette entries on either side of `at`, then toward pumpkin orange. */
@@ -1208,9 +1215,14 @@ function labradorEars(geometry: THREE.BufferGeometry, parts: Int32Array): { weig
  * tongue part, so at rest the two overlap. When the real tongue goes out, the copy stayed behind
  * and the outgoing tongue cut through it. This returns, for each main-mesh vertex inside the
  * tongue's footprint, how far it must sink to reach the flat floor of the mouth (y 3.8 or so).
+ * The copy's rounded tip reaches about 0.13 past the real tongue's tip and stands up to 0.12
+ * above it, so the footprint runs on past the tip.
  */
 function labradorMouthFloor(geometry: THREE.BufferGeometry, parts: Int32Array): THREE.BufferAttribute {
   const BIN = 0.05;
+  /** Bins past the real tongue's tip, and height above its top, that the copy still reaches. */
+  const PAST_TIP = 3;
+  const ABOVE_TOP = 0.15;
   const pos = geometry.attributes.position;
   const tongueW = geometry.attributes.aTongue;
   const jaw = geometry.attributes.aJaw;
@@ -1228,27 +1240,38 @@ function labradorMouthFloor(geometry: THREE.BufferGeometry, parts: Int32Array): 
     halfW.set(b, Math.max(halfW.get(b) ?? 0, Math.abs(pos.getX(i))));
     top.set(b, Math.max(top.get(b) ?? -Infinity, pos.getY(i)));
   }
+  const tipBin = Math.max(...halfW.keys());
+  // The last bin holds only the rounded end of the tongue, about 0.1 wide. From there on, use
+  // the full width just behind it, so the footprint covers the copy's wider tip.
+  const near = (b: number) => (b >= tipBin && b <= tipBin + PAST_TIP ? tipBin - 1 : b);
   // The floor: the lowest main-mesh point near the midline, on the jaw, in each bin.
   const floor = new Map<number, number>();
   for (let i = 0; i < pos.count; i++) {
     if (parts[i] !== main || jaw.getX(i) < 0.99 || Math.abs(pos.getX(i)) > 0.12) continue;
     const b = Math.floor(pos.getZ(i) / BIN);
-    if (!halfW.has(b) || pos.getY(i) < 3.7) continue;
+    if (!halfW.has(near(b)) || pos.getY(i) < 3.7) continue;
     floor.set(b, Math.min(floor.get(b) ?? Infinity, pos.getY(i)));
   }
-  const drop = new Float32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) {
-    if (parts[i] !== main || jaw.getX(i) < 0.99) continue;
+  // The floor under vertex i, if it lies in the copy, fully inside the footprint's edge.
+  const floorUnder = (i: number): number | undefined => {
     const z = pos.getZ(i);
     const b = Math.floor(z / BIN);
-    const w = halfW.get(b);
+    const w = halfW.get(near(b));
     const f = floor.get(b);
-    if (w === undefined || f === undefined || z < 3.95) continue;
     const y = pos.getY(i);
-    if (y > (top.get(b) ?? y) + 0.02 || y <= f) continue;
+    if (w === undefined || f === undefined || z < 3.95 || jaw.getX(i) < 0.99) return undefined;
+    if (y > (top.get(near(b)) ?? y) + ABOVE_TOP || Math.abs(pos.getX(i)) > w - 0.01) return undefined;
+    return f;
+  };
+  const drop = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== main) continue;
+    const f = floorUnder(i);
+    const y = pos.getY(i);
+    if (f === undefined || y <= f) continue;
     // Full drop inside the footprint, easing off at its edge so the gums don't move.
-    const x = Math.abs(pos.getX(i));
-    drop[i] = (y - f - 0.005) * (1 - smoothstep(w - 0.06, w - 0.01, x));
+    const w = halfW.get(near(Math.floor(pos.getZ(i) / BIN)))!;
+    drop[i] = (y - f - 0.005) * (1 - smoothstep(w - 0.06, w - 0.01, Math.abs(pos.getX(i))));
   }
   return new THREE.BufferAttribute(drop, 1);
 }

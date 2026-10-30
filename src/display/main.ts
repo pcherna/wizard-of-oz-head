@@ -121,8 +121,8 @@ function trigger(effect: EffectName) {
   } else if (effect === 'lightning') {
     lightning.strike(clock);
   } else if (head) {
-    // Each press plays the next trick, skipping tricks this head can't do.
-    const tricks = TRICKS.filter(canDo);
+    // Each press plays the next trick, skipping autopilot-only tricks and tricks this head can't do.
+    const tricks = TRICKS.filter((tr) => !tr.autopilot && canDo(tr));
     playTrick(tricks[nextTrick++ % tricks.length]);
   }
 }
@@ -170,6 +170,8 @@ let lastActivity = 0;
 /** Scales the wait, so autopilot tricks don't come like clockwork. */
 let autoJitter = 1;
 let lastAuto: Trick | null = null;
+/** The N key's place in the autopilot tricks. */
+let nextAuto = 0;
 
 function noteActivity() {
   lastActivity = clock;
@@ -179,7 +181,7 @@ function noteActivity() {
 function autopilot() {
   const wait = store.value.autopilotSec;
   if (wait <= 0 || !head || clock - lastActivity < wait * autoJitter) return;
-  const choices = TRICKS.filter((tr) => tr.auto && tr !== lastAuto && canDo(tr));
+  const choices = TRICKS.filter((tr) => tr.autopilot && tr !== lastAuto && canDo(tr));
   lastAuto = choices[Math.floor(Math.random() * choices.length)];
   playTrick(lastAuto);
   noteActivity();
@@ -255,6 +257,13 @@ addEventListener('keydown', (e) => {
   if ((e.key === 'a' || e.key === 'A') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     noteActivity();
     if (lastTrick) playTrick(lastTrick);
+    return;
+  }
+  // Testing: play the next autopilot trick, in order, without waiting for autopilot.
+  if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    noteActivity();
+    const autos = TRICKS.filter((tr) => tr.autopilot && canDo(tr));
+    if (autos.length) playTrick(autos[nextAuto++ % autos.length]);
     return;
   }
   // Projector fit. Skip Cmd-R and friends, so a reload doesn't also reset the corners.
@@ -442,7 +451,7 @@ function frame(now: number) {
   crumbs.update(dt, null);
   firefly.update(head);
   treat.update(head);
-  rainbow.update(clock, head?.rainbow ?? 0, head?.rainbowArc ?? 0);
+  rainbow.update(clock, head?.rainbow ?? 0, head?.rainbowArc ?? 0, head?.rainbowSide ?? 1);
   snooze.update(dt, head);
   monkeys.update(clock);
   if (mouth.level > 0.15) noteActivity();

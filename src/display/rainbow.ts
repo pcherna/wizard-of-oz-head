@@ -16,6 +16,7 @@ const fragmentShader = /* glsl */ `
 uniform float uTime;
 uniform float uAmount;
 uniform float uArc;
+uniform float uSide;
 uniform float uAspect;
 varying vec2 vUv;
 
@@ -30,16 +31,16 @@ void main() {
   float band = (length(d) - INNER) / WIDTH;
   float shape = smoothstep(0.0, 0.1, band) * smoothstep(1.0, 0.92, band);
   // 0 at the horizon on the side the arc starts from, pi at the other end.
-  float side = uArc < 0.0 ? -1.0 : 1.0;
-  float angle = atan(d.y, d.x * side);
-  float drawn = abs(uArc) * 3.2;
+  float angle = atan(d.y, d.x * uSide);
+  float drawn = uArc * 3.2;
   float shown = 1.0 - smoothstep(drawn - 0.12, drawn, angle);
   // The ends fade into mist near the floor.
   shown *= smoothstep(-1.0, -0.35, q.y);
   vec3 col = clamp(0.5 + 0.75 * cos(6.2832 * (0.75 * (1.0 - band) + vec3(0.0, 0.67, 0.33))), 0.0, 1.0);
   // A slow shimmer along the arc, and a bright tip while it's being drawn.
   float shimmer = 0.85 + 0.15 * sin(angle * 24.0 - uTime * 3.0);
-  float tip = (1.0 - smoothstep(0.0, 0.25, abs(angle - drawn))) * step(abs(uArc), 0.99);
+  // The tip shows only while the arc is being drawn, not before it starts or once it's whole.
+  float tip = (1.0 - smoothstep(0.0, 0.25, abs(angle - drawn))) * smoothstep(0.0, 0.03, uArc) * step(uArc, 0.99);
   gl_FragColor = vec4(col * shape * (shown * shimmer + tip) * uAmount * 0.6, 1.0);
 }
 `;
@@ -51,6 +52,7 @@ export class Rainbow {
     uTime: { value: 0 },
     uAmount: { value: 0 },
     uArc: { value: 0 },
+    uSide: { value: 1 },
     uAspect: { value: 16 / 9 },
   };
 
@@ -76,11 +78,12 @@ export class Rainbow {
     this.uniforms.uAspect.value = camera.aspect;
   }
 
-  /** amount (0 to 1) is its brightness. arc (-1 to 1) is how much is drawn, signed by the side it starts from. */
-  update(t: number, amount: number, arc: number) {
+  /** amount (0 to 1) is its brightness, arc (0 to 1) how much is drawn, and side (+1 or -1) the side it starts from, + the viewer's right. */
+  update(t: number, amount: number, arc: number, side: number) {
     this.mesh.visible = amount > 0.001;
     this.uniforms.uTime.value = t;
     this.uniforms.uAmount.value = amount;
     this.uniforms.uArc.value = arc;
+    this.uniforms.uSide.value = side;
   }
 }

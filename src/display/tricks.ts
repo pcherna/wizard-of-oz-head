@@ -113,7 +113,7 @@ export interface Pose {
   treatSpin: number;
   /** Brightness of the rainbow behind the head, 0 to 1. */
   rainbow: number;
-  /** How much of the rainbow's arc is drawn, 0 to 1. The sign is the side it starts from: + the viewer's right. */
+  /** How much of the rainbow's arc is drawn, 0 to 1. It starts from the trick's side: dir +1 is the viewer's right. */
   rainbowArc: number;
 }
 
@@ -135,8 +135,8 @@ export interface Trick {
    * trick starts when it ends. 'instead' plays it in place of the synthesized sound.
    */
   clip?: 'first' | 'instead';
-  /** Small enough for autopilot to play on its own. */
-  auto?: boolean;
+  /** Small enough for autopilot to play on its own. It then plays only on autopilot, never from the trick button. */
+  autopilot?: boolean;
   /** dir is +1 or -1, picked at random each time, for moves that go one way. */
   pose(t: number, p: Pose, dir: number): void;
 }
@@ -257,7 +257,7 @@ export const TRICKS: Trick[] = [
     name: 'lick',
     seconds: 1.8,
     tongue: true,
-    auto: true,
+    autopilot: true,
     pose(t, p, dir) {
       const e = hold(t, 0, 0.2, 1.4, 1.7);
       p.jaw = 0.75;
@@ -358,7 +358,7 @@ export const TRICKS: Trick[] = [
       const e = hold(t, 0.2, 1.4, 6.8, 7.7);
       p.rainbow = hold(t, 0.2, 0.6, 6.6, 7.6);
       // The arc is drawn by "way", then hangs there until the music box rings out.
-      p.rainbowArc = dir * ease((t - 0.3) / (beat(8) - 0.3));
+      p.rainbowArc = ease((t - 0.3) / (beat(8) - 0.3));
       // The nose rises with the octave leap of "Some-where".
       p.pitch = -0.3 * hold(t, beat(1), beat(2.5), 6.6, 7.6);
       p.roll = 0.1 * Math.sin((t - 0.4) * 1.6) * e;
@@ -379,7 +379,7 @@ export const TRICKS: Trick[] = [
     seconds: 3.4,
     tongue: false,
     ears: true,
-    auto: true,
+    autopilot: true,
     pose(t, p, dir) {
       const e = hold(t, PERK_AT - 0.1, PERK_AT + 0.25, 2.4, 3.2);
       const ear = earPop(t, PERK_AT, 2.4);
@@ -457,7 +457,7 @@ export const TRICKS: Trick[] = [
     name: 'scratch',
     seconds: 3.7,
     tongue: false,
-    auto: true,
+    autopilot: true,
     pose(t, p, dir) {
       const e = hold(t, 0, 0.4, 2.8, 3.6);
       let jostle = 0;
@@ -500,7 +500,7 @@ export const TRICKS: Trick[] = [
     name: 'blep',
     seconds: 2.1,
     tongue: true,
-    auto: true,
+    autopilot: true,
     pose(t, p) {
       const e = hold(t, 0, 0.25, 1.6, 1.95);
       const out = hold(t, 0.1, 0.4, 1.5, 1.85);
@@ -539,7 +539,7 @@ export const TRICKS: Trick[] = [
     name: 'tilt',
     seconds: 1.7,
     tongue: false,
-    auto: true,
+    autopilot: true,
     pose(t, p, dir) {
       const e = hold(t, 0, 0.22, 1.15, 1.6);
       p.roll = 0.42 * dir * e;
@@ -605,7 +605,7 @@ export const TRICKS: Trick[] = [
     name: 'pant',
     seconds: 2.4,
     tongue: true,
-    auto: true,
+    autopilot: true,
     pose(t, p) {
       const e = hold(t, 0, 0.25, 2.0, 2.4);
       const beat = Math.sin(t * 2 * Math.PI * 3.6);
@@ -639,7 +639,7 @@ export const TRICKS: Trick[] = [
     name: 'hiccups',
     seconds: 3.0,
     tongue: false,
-    auto: true,
+    autopilot: true,
     pose(t, p) {
       let jolt = 0;
       for (const at of HICCUP_TIMES) jolt = Math.max(jolt, hold(t, at, at + 0.04, at + 0.07, at + 0.35));
@@ -691,7 +691,7 @@ export const TRICKS: Trick[] = [
     name: 'wink',
     seconds: 1.5,
     tongue: false,
-    auto: true,
+    autopilot: true,
     pose(t, p) {
       const e = hold(t, 0, 0.2, 1.0, 1.45);
       p.eyeGlow = 1 + 1.5 * hold(t, 0, 0.2, 0.95, 1.3);
@@ -707,6 +707,7 @@ export const TRICKS: Trick[] = [
     name: 'nap',
     seconds: 6.6,
     tongue: false,
+    autopilot: true,
     pose(t, p, dir) {
       const asleep = hold(t, 2.4, 2.9, NAP_WAKE, NAP_WAKE + 0.02);
       // One breath per 1.2 s snore, rising on the inhale.
