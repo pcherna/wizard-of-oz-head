@@ -79,7 +79,7 @@ Only the Labrador has a tongue, so the other heads skip blep, lick and pant. The
 
 To check a pose, add `?trick=lick&at=0.8` to the URL. It holds that trick at 0.8 seconds in.
 
-The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from the movie *Up*. Save the clip as `public/sfx/squirrel.mp3` or `public/sfx/squirrel.wav`. The dog plays the clip, then turns its head when the clip ends. Trim any silence from the end of the clip, or the turn comes late. Git ignores this file, because the repo is public and the clip is movie audio. Without the file, the squirrel trick plays its own short sound and turns at once.
+The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from the movie *Up*. Save the clip as `public/sfx/squirrel.mp3` or `public/sfx/squirrel.wav`. The dog plays the clip, then turns its head when the clip ends. Trim any silence from the end of the clip, or the turn comes late. Without the file, the squirrel trick plays its own short sound and turns at once.
 
 ## Upside-down projector
 

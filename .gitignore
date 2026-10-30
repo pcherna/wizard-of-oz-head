@@ -2,5 +2,3 @@ node_modules
 dist
 .chrome-show-profile
 .DS_Store
-# Movie audio for the squirrel trick. The repo is public, so it stays local.
-public/sfx/squirrel.*
