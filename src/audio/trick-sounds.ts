@@ -1,7 +1,25 @@
-import { BUBBLE_POP, HICCUP_TIMES, MELT_DOWN, NAP_WAKE, SHAKE_DOUSE, type TrickName } from '../display/tricks';
+import {
+  BUBBLE_POP, DOORBELL_BARKS, FIREFLY_BURP, FIREFLY_CATCH, FIREFLY_GULP, HICCUP_TIMES, MELT_DOWN, NAP_WAKE, PERK_AT,
+  PUMPKIN_LIGHT, PUMPKIN_OUT, RAINBOW_BEAT, RAINBOW_START, RAINBOW_TUNE, SCRATCH_STROKES, SHAKE_DOUSE,
+  TREAT_CATCH, TREAT_CRUNCHES, TREAT_FLIP, TREAT_GULP, WIZARD_EIGHTH, WIZARD_START, WIZARD_TUNE, fireflyAt, type TrickName,
+} from '../display/tricks';
 
 /** A vowel formant: center Hz, Q and level. */
 type Formant = [number, number, number];
+
+/** The march's bass: [eighth note, Hz], one per beat, root and fifth. D, A, D, A7, D, A, G, A7, then the last D. */
+const WIZARD_BASS: [number, number][] = [
+  [0, 146.83], [3, 110], [6, 146.83], [9, 110], [12, 146.83], [15, 110], [18, 98], [21, 110], [24, 146.83],
+];
+
+/** The music box's accompaniment under "Over the Rainbow": [quarter note, MIDI note], root then fifth or seventh. */
+const RAINBOW_BASS: [number, number][] = [
+  [0, 62], [1, 69], [2, 59], [3, 66], [4, 54], [5, 61], [6, 62], [7, 60], [8, 55], [9, 62], [10, 55], [11, 65], [12, 62], [13, 66], [14, 69],
+];
+
+function midiHz(note: number): number {
+  return 440 * 2 ** ((note - 69) / 12);
+}
 
 /** Synthesized sounds for the dog tricks. Each one is timed to its trick's poses in tricks.ts. */
 export class TrickSounds {
@@ -74,7 +92,289 @@ export class TrickSounds {
         return this.melt(t);
       case 'vampire':
         return this.toccata(t + 0.4);
+      case 'perk':
+        this.whistle(t, dir);
+        this.boing(t + PERK_AT);
+        return this.flop(t + 2.65);
+      case 'doorbell':
+        this.doorbell(t, dir);
+        for (const at of DOORBELL_BARKS) this.bark(t + at, 0.45, 1.3);
+        return;
+      case 'firefly':
+        return this.firefly(t, dir);
+      case 'scratch':
+        this.scrape(t);
+        return this.groan(t + 2.6);
+      case 'pumpkin':
+        return this.candle(t);
+      case 'treat':
+        return this.treat(t);
+      case 'wizard':
+        return this.wizard(t);
+      case 'rainbow':
+        return this.musicBox(t);
     }
+  }
+
+  /**
+   * The biscuit on the nose: a clock ticks through the wait, with a whine of longing. A "fwip" as
+   * it's tossed, a chomp, four crunches, a gulp and a sparkle.
+   */
+  private treat(t: number) {
+    [0.8, 1.3, 1.8, 2.3].forEach((at, i) => this.tick(t + at, i % 2 ? 1300 : 1800));
+    this.whine(t + 1.9, 700, 950);
+    const fwip = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 600, Q: 2 });
+    fwip.frequency.setValueAtTime(600, t + TREAT_FLIP);
+    fwip.frequency.exponentialRampToValueAtTime(3000, t + TREAT_FLIP + 0.15);
+    this.noiseInto(t + TREAT_FLIP, 0.15, fwip, [[0.05, 1.2], [0.15, 0]]);
+    this.chomp(t + TREAT_CATCH);
+    for (const at of TREAT_CRUNCHES) this.crunch(t + at);
+    this.gulp(t + TREAT_GULP);
+    this.ding(t + TREAT_GULP + 0.2);
+  }
+
+  /** A woodblock "tick" of a clock. */
+  private tick(t: number, hz: number) {
+    this.osc('sine', hz, t, 0.06).connect(this.env(t, [[0.002, 0.5], [0.06, 0]], true));
+    this.noise(t, 0.01, { type: 'highpass', frequency: 3000 }, [[0.001, 0.3], [0.01, 0]]);
+  }
+
+  /** Teeth snapping shut: a click and a thud. */
+  private chomp(t: number) {
+    this.noise(t, 0.03, { type: 'highpass', frequency: 2500 }, [[0.001, 0.8], [0.03, 0]]);
+    const thud = this.osc('sine', 160, t, 0.1);
+    thud.frequency.setValueAtTime(160, t);
+    thud.frequency.exponentialRampToValueAtTime(70, t + 0.1);
+    thud.connect(this.env(t, [[0.003, 0.6], [0.1, 0]]));
+  }
+
+  /** A quick, low "glk". */
+  private gulp(t: number) {
+    const tone = this.osc('sine', 320, t, 0.12);
+    tone.frequency.setValueAtTime(320, t);
+    tone.frequency.exponentialRampToValueAtTime(110, t + 0.12);
+    tone.connect(this.env(t, [[0.01, 0.5], [0.12, 0]]));
+  }
+
+  /** A biscuit breaking between the teeth: a burst of dry crackles over a dull crack. */
+  private crunch(t: number) {
+    this.noise(t, 0.06, { type: 'lowpass', frequency: 900, Q: 0.7 }, [[0.003, 0.6], [0.06, 0]]);
+    for (let i = 0; i < 8; i++) {
+      const at = t + Math.random() * 0.07;
+      this.noise(at, 0.012, { type: 'bandpass', frequency: 1500 + Math.random() * 2500, Q: 3 }, [[0.001, 0.5], [0.012, 0]]);
+    }
+  }
+
+  /**
+   * "We're off to see the Wizard" on a kazoo: one buzzing voice that slides from note to note,
+   * tongued between them, over a tuba's oom-pah and a brush on the off-beats. A cymbal on the last note.
+   */
+  private wizard(t: number) {
+    const at = (eighth: number) => t + WIZARD_START + eighth * WIZARD_EIGHTH;
+    const first = WIZARD_TUNE[0];
+    const last = WIZARD_TUNE[WIZARD_TUNE.length - 1];
+    const start = at(first[0]);
+    const end = at(last[0] + last[1]);
+    const voice = this.osc('sawtooth', midiHz(first[2]), start, end - start + 0.2);
+    voice.frequency.setValueAtTime(midiHz(first[2]), start);
+    this.vibrato(voice, 5.5, 4, start, end - start + 0.2);
+    // The membrane buzz: clip the tone hard, then a nasal peak and a rasp on top.
+    const buzz = new WaveShaperNode(this.ctx, { curve: softClip(4) });
+    const nasal = new BiquadFilterNode(this.ctx, { type: 'peaking', frequency: 1100, Q: 2, gain: 10 });
+    const rasp = new BiquadFilterNode(this.ctx, { type: 'peaking', frequency: 2800, Q: 2, gain: 8 });
+    const thin = new BiquadFilterNode(this.ctx, { type: 'highpass', frequency: 300 });
+    const level = new GainNode(this.ctx, { gain: 0 });
+    level.gain.setValueAtTime(0, start);
+    voice.connect(buzz).connect(nasal).connect(rasp).connect(thin).connect(level).connect(new GainNode(this.ctx, { gain: 0.12 })).connect(this.out);
+    for (const [n, len, note] of WIZARD_TUNE) {
+      voice.frequency.setTargetAtTime(midiHz(note), at(n) - 0.01, 0.012);
+      level.gain.setTargetAtTime(1, at(n), 0.01);
+      level.gain.setTargetAtTime(0.2, at(n + len) - 0.035, 0.01);
+    }
+    level.gain.setTargetAtTime(0, end, 0.04);
+    for (const [n, hz] of WIZARD_BASS) {
+      const len = n === last[0] ? 0.6 : 0.28;
+      for (const [mult, gain] of [[1, 0.5], [2, 0.2], [3, 0.08]]) {
+        this.osc('sine', hz * mult, at(n), len).connect(this.env(at(n), [[0.02, gain], [len, 0]], true));
+      }
+      if (n < last[0]) this.noise(at(n + 2), 0.06, { type: 'bandpass', frequency: 3000, Q: 0.8 }, [[0.004, 0.25], [0.06, 0]]);
+    }
+    this.noise(at(last[0]), 1.0, { type: 'highpass', frequency: 5000 }, [[0.005, 0.35], [1.0, 0]]);
+  }
+
+  /**
+   * "Somewhere over the rainbow, way up high" on a music box, with a soft accompaniment and a
+   * little hall, after a harp sweep as the rainbow appears. A contented sigh at the end.
+   */
+  private musicBox(t: number) {
+    const at = (beat: number) => t + RAINBOW_START + beat * RAINBOW_BEAT;
+    const box = new GainNode(this.ctx);
+    box.connect(this.out);
+    const hall = new ConvolverNode(this.ctx, { buffer: this.churchImpulse() });
+    box.connect(hall).connect(new GainNode(this.ctx, { gain: 0.2 })).connect(this.out);
+    this.glissando(t + 0.1, true);
+    for (const [beat, , note] of RAINBOW_TUNE) this.tine(midiHz(note), at(beat), box, 1);
+    for (const [beat, note] of RAINBOW_BASS) this.tine(midiHz(note), at(beat), box, 0.4);
+    this.noise(at(16) + 0.1, 0.9, { type: 'bandpass', frequency: 700, Q: 0.7 }, [[0.25, 0.35], [0.9, 0]]);
+  }
+
+  /** A plucked music-box tine: a pure tone with a quick metallic overtone, ringing out. */
+  private tine(hz: number, t: number, out: AudioNode, level: number) {
+    for (const [mult, gain, decay] of [[1, 0.3, 1.6], [2, 0.08, 0.6], [5.4, 0.05, 0.25]]) {
+      this.osc('sine', hz * mult, t, decay).connect(this.env(t, [[0.002, gain * level], [decay, 0]], true, out));
+    }
+  }
+
+  /** An owner calling the dog from one side: a whistled "fweet", then a "fwee-oo-eet" that dips and rises. */
+  private whistle(t: number, dir: number) {
+    const pan = new StereoPannerNode(this.ctx, { pan: 0.75 * dir });
+    // A little room echo, so it sounds like it comes from across the yard.
+    const echo = new DelayNode(this.ctx, { delayTime: 0.11 });
+    pan.connect(this.out);
+    pan.connect(echo).connect(new GainNode(this.ctx, { gain: 0.25 })).connect(this.out);
+    const notes: [number, number, [number, number][]][] = [
+      [0.02, 0.24, [[0, 1700], [0.2, 2700]]],
+      [0.34, 0.45, [[0, 2600], [0.1, 2650], [0.3, 1750], [0.45, 2350]]],
+    ];
+    for (const [at, len, glide] of notes) {
+      const tone = this.osc('sine', glide[0][1], t + at, len);
+      tone.frequency.setValueAtTime(glide[0][1], t + at);
+      for (const [k, hz] of glide.slice(1)) tone.frequency.exponentialRampToValueAtTime(hz, t + at + k);
+      this.vibrato(tone, 6, 25, t + at, len);
+      tone.connect(this.env(t + at, [[0.03, 0.3], [len - 0.05, 0.28], [len, 0]], false, pan));
+      // The breath behind a whistle.
+      this.noise(t + at, len, { type: 'bandpass', frequency: 2400, Q: 2 }, [[0.03, 0.06], [len, 0]], pan);
+    }
+  }
+
+  /** A cartoon "boing" as the ear springs up: a twangy tone that wobbles and dies away. */
+  private boing(t: number) {
+    const tone = this.osc('triangle', 180, t, 0.5);
+    tone.frequency.setValueAtTime(180, t);
+    tone.frequency.exponentialRampToValueAtTime(320, t + 0.12);
+    tone.frequency.exponentialRampToValueAtTime(260, t + 0.5);
+    const wobble = new GainNode(this.ctx, { gain: 60 });
+    wobble.gain.setValueAtTime(60, t);
+    wobble.gain.exponentialRampToValueAtTime(5, t + 0.5);
+    this.osc('sine', 16, t, 0.5).connect(wobble).connect(tone.frequency);
+    tone.connect(this.env(t, [[0.005, 0.45], [0.5, 0]], true));
+  }
+
+  /** A soft, floppy thud as the ear drops. */
+  private flop(t: number) {
+    this.noise(t, 0.08, { type: 'lowpass', frequency: 400, Q: 0.7 }, [[0.005, 0.7], [0.08, 0]]);
+  }
+
+  /** A two-tone "ding-dong" doorbell from the door's side: struck bells with clangy overtones, ringing out. */
+  private doorbell(t: number, dir: number) {
+    const pan = new StereoPannerNode(this.ctx, { pan: 0.6 * dir });
+    pan.connect(this.out);
+    for (const [hz, at] of [[659.25, 0], [523.25, 0.45]]) {
+      for (const [mult, level] of [[1, 0.3], [2, 0.12], [2.76, 0.08], [5.4, 0.04]]) {
+        this.osc('sine', hz * mult, t + at, 1.6).connect(this.env(t + at, [[0.003, level], [1.6 / mult, 0]], true, pan));
+      }
+    }
+  }
+
+  /**
+   * The firefly buzzing around the head, panned and louder as it passes close, its pitch bending
+   * as it darts. Then a chomp, a gulp, and a fluttering burp with a sparkle.
+   */
+  private firefly(t: number, dir: number) {
+    const pan = new StereoPannerNode(this.ctx, { pan: dir });
+    const level = new GainNode(this.ctx, { gain: 0 });
+    const wings = this.osc('sawtooth', 210, t, FIREFLY_CATCH);
+    const band = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 900, Q: 0.8 });
+    wings.connect(band).connect(level).connect(pan).connect(this.out);
+    // Wingbeats flutter the level.
+    const flutter = new GainNode(this.ctx, { gain: 0.3 });
+    this.osc('sine', 37, t, FIREFLY_CATCH).connect(flutter).connect(level.gain);
+    level.gain.setValueAtTime(0, t);
+    pan.pan.setValueAtTime(dir, t);
+    wings.frequency.setValueAtTime(210, t);
+    const STEP = 0.03;
+    let prevDist = Math.hypot(...fireflyAt(0, dir));
+    for (let k = 0; k <= FIREFLY_CATCH; k += STEP) {
+      const [x, y, z] = fireflyAt(k, dir);
+      const dist = Math.hypot(x, y, z - 1.5);
+      // Nearer the audience, at z 1.5 and up, is louder. Moving away lowers the pitch a little.
+      const loud = Math.min(1, 0.6 / Math.max(dist, 0.3)) * Math.min(1, k / 0.4);
+      level.gain.linearRampToValueAtTime(0.5 * loud, t + k);
+      pan.pan.linearRampToValueAtTime(Math.max(-1, Math.min(1, x / 2)), t + k);
+      wings.frequency.linearRampToValueAtTime(210 * (1 - 1.5 * (dist - prevDist)), t + k);
+      prevDist = dist;
+    }
+    level.gain.linearRampToValueAtTime(0, t + FIREFLY_CATCH + 0.01);
+    this.chomp(t + FIREFLY_CATCH);
+    this.gulp(t + FIREFLY_GULP);
+    // Burp: a low "uh" fluttering in the throat, then the sparkle of the sparks escaping.
+    const burp = t + FIREFLY_BURP - 0.05;
+    const uh: Formant[] = [[550, 4, 1], [1000, 5, 0.5]];
+    const oh: Formant[] = [[450, 4, 1], [800, 5, 0.5]];
+    const croak = new GainNode(this.ctx, { gain: 0.6 });
+    this.osc('sine', 28, burp, 0.45).connect(new GainNode(this.ctx, { gain: 0.4 })).connect(croak.gain);
+    croak.connect(this.out);
+    const keep = this.out;
+    this.out = croak;
+    try {
+      this.vowel(burp, 0.45, [[0, 105], [0.45, 80]], uh, oh, 0.5, [[0.03, 0.6], [0.3, 0.45], [0.45, 0]]);
+    } finally {
+      this.out = keep;
+    }
+    this.ding(t + FIREFLY_BURP + 0.1);
+  }
+
+  /**
+   * Fingernails scratching through fur: a steady "shhhh" that swells on each stroke, faster and
+   * faster. The strokes go back and forth, so each one is pitched a little higher or lower than the last.
+   */
+  private scrape(t: number) {
+    const start = 0.45;
+    const end = 2.5;
+    const split = new GainNode(this.ctx);
+    const fur = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 4000, Q: 0.9 });
+    // A lower rasp under the hiss, so small speakers carry it too.
+    const rasp = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 1300, Q: 1.2 });
+    const strokes = new GainNode(this.ctx, { gain: 0.3 });
+    split.connect(fur).connect(strokes);
+    split.connect(rasp).connect(new GainNode(this.ctx, { gain: 0.5 })).connect(strokes);
+    strokes.gain.setValueAtTime(0.3, t + start);
+    const ends = [start, ...SCRATCH_STROKES, end];
+    for (let i = 1; i < ends.length; i++) {
+      const [a, b] = [ends[i - 1], ends[i]];
+      fur.frequency.setTargetAtTime(i % 2 ? 3300 : 4800, t + a, 0.03);
+      strokes.gain.linearRampToValueAtTime(1, t + (a + b) / 2);
+      strokes.gain.linearRampToValueAtTime(0.3, t + b);
+    }
+    this.noiseInto(t + start, end - start, split, [[0.15, 0.7], [end - start - 0.15, 0.7], [end - start, 0]], strokes);
+  }
+
+  /** A long, contented "mmmmh" through closed lips, sinking at the end. */
+  private groan(t: number) {
+    const mm: Formant[] = [[250, 3, 1], [900, 5, 0.15]];
+    this.vowel(t, 0.9, [[0, 150], [0.3, 165], [0.9, 105]], mm, mm, 0.2, [[0.1, 0.4], [0.6, 0.35], [0.9, 0]]);
+  }
+
+  /**
+   * The jack-o'-lantern: a match strikes and the candle catches with a soft "whump", then
+   * crackles quietly until the dog blows it out with a long "fff".
+   */
+  private candle(t: number) {
+    const strike = t + PUMPKIN_LIGHT - 0.35;
+    this.noise(strike, 0.2, { type: 'bandpass', frequency: 3500, Q: 1 }, [[0.01, 0.5], [0.06, 0.25], [0.2, 0]]);
+    for (let i = 0; i < 5; i++) {
+      this.noise(strike + Math.random() * 0.15, 0.015, { type: 'highpass', frequency: 4000 }, [[0.002, 0.4], [0.015, 0]]);
+    }
+    const whump = new BiquadFilterNode(this.ctx, { type: 'lowpass', frequency: 200, Q: 1 });
+    whump.frequency.setValueAtTime(200, t + PUMPKIN_LIGHT);
+    whump.frequency.exponentialRampToValueAtTime(900, t + PUMPKIN_LIGHT + 0.15);
+    whump.frequency.exponentialRampToValueAtTime(250, t + PUMPKIN_LIGHT + 0.6);
+    this.noiseInto(t + PUMPKIN_LIGHT, 0.6, whump, [[0.08, 1.2], [0.6, 0]]);
+    for (let i = 0; i < 10; i++) {
+      const at = t + PUMPKIN_LIGHT + 0.3 + Math.random() * (PUMPKIN_OUT - PUMPKIN_LIGHT - 0.5);
+      this.noise(at, 0.02, { type: 'bandpass', frequency: 2500 + Math.random() * 2500, Q: 2 }, [[0.002, 0.2], [0.02, 0]]);
+    }
+    this.noise(t + PUMPKIN_OUT - 0.25, 0.4, { type: 'bandpass', frequency: 1300, Q: 0.8 }, [[0.05, 0.6], [0.3, 0.5], [0.4, 0]]);
   }
 
   /**
@@ -190,13 +490,16 @@ export class TrickSounds {
     thup.connect(this.env(pop, [[0.002, 0.6], [0.08, 0]]));
   }
 
-  /** A big "WOOF!": a voiced bark from "oo" to "uh", a thump of chest, and a puff of breath at the end. */
-  private bark(t: number) {
+  /**
+   * A big "WOOF!": a voiced bark from "oo" to "uh", a thump of chest, and a puff of breath at the
+   * end. A lower level and higher pitch make a friendlier "boof".
+   */
+  private bark(t: number, level = 1, pitch = 1) {
     const oo: Formant[] = [[400, 4, 1], [850, 5, 0.6]];
     const uh: Formant[] = [[650, 4, 1], [1100, 5, 0.6]];
-    this.vowel(t, 0.24, [[0, 230], [0.05, 300], [0.24, 150]], oo, uh, 1.5, [[0.01, 0.9], [0.08, 0.7], [0.24, 0]]);
-    this.noise(t, 0.12, { type: 'lowpass', frequency: 200, Q: 0.7 }, [[0.004, 1], [0.12, 0]]);
-    this.noise(t + 0.17, 0.08, { type: 'highpass', frequency: 2000 }, [[0.01, 0.25], [0.08, 0]]);
+    this.vowel(t, 0.24, [[0, 230 * pitch], [0.05, 300 * pitch], [0.24, 150 * pitch]], oo, uh, 1.5, [[0.01, 0.9 * level], [0.08, 0.7 * level], [0.24, 0]]);
+    this.noise(t, 0.12, { type: 'lowpass', frequency: 200, Q: 0.7 }, [[0.004, level], [0.12, 0]]);
+    this.noise(t + 0.17, 0.08, { type: 'highpass', frequency: 2000 }, [[0.01, 0.25 * level], [0.08, 0]]);
   }
 
   /** Two snores, each a rumbling inhale and a thin whistle out, then a startled snort and "huh?!". */
@@ -576,4 +879,11 @@ function bubble(d: Float32Array, rate: number, at: number, hz: number, decay: nu
     phase += (hz * (1 + (k / decay) * 0.6)) / rate;
     d[start + i] += level * Math.exp(-k / decay) * Math.sin(2 * Math.PI * phase);
   }
+}
+
+/** A tanh curve for a WaveShaperNode: drive 1 barely bends the wave, higher clips it toward a square. */
+function softClip(drive: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(1024);
+  for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh(drive * ((i / (curve.length - 1)) * 2 - 1));
+  return curve;
 }

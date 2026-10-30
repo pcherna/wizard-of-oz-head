@@ -37,6 +37,8 @@ interface Rig {
   tongueLip: THREE.Vector2;
   /** Just in front of the closed lips, where a gum bubble grows from. */
   mouthFront: THREE.Vector3;
+  /** Where a biscuit sits on top of the nose. Only measured for the Labrador. */
+  noseTop?: THREE.Vector3;
 }
 
 const SCAN_RIG: Rig = {
@@ -107,6 +109,8 @@ const LABRADOR_RIG: Rig = {
   tongueLip: new THREE.Vector2(4.05, 4.45),
   // Under the nose, in front of the upper lip (z 4.67 at y 4.15).
   mouthFront: new THREE.Vector3(0, 4.03, 4.62),
+  // The top of the nose leather is at y 4.58 here. Raised by half a biscuit.
+  noseTop: new THREE.Vector3(0, 4.64, 4.75),
   // Unused without a seam mouth, but kept consistent with the measurements.
   midX: 0,
   seamY: 4.1,
@@ -149,6 +153,19 @@ attribute vec2 aTongueTip;
 attribute vec4 aFang;
 // How far this mouth-floor vertex sinks while the tongue is out. See labradorMouthFloor().
 attribute float aFloorDrop;
+// How much of its ear's lift this vertex takes: + on the right ear, - on the left, 0 off the ears. See labradorEars().
+attribute float aEar;
+// Each ear's lift angle in radians, left then right, the hinge it swings on, and the way it hangs.
+uniform vec2 uEarLift;
+uniform vec3 uEarPivotL;
+uniform vec3 uEarAxisL;
+uniform vec3 uEarDownL;
+uniform vec3 uEarPivotR;
+uniform vec3 uEarAxisR;
+uniform vec3 uEarDownR;
+// Radians a fully lifted ear turns about its own length, so its inside faces the audience instead of its edge.
+uniform float uEarTwist;
+uniform float uEarLiftMax;
 uniform float uFangs;
 varying float vFang;
 varying vec3 vNormalW;
@@ -220,10 +237,30 @@ vec3 meltHead(vec3 p) {
   return vec3(uPivot.x + c.x * uMeshUnit, uFloorY + h * uMeshUnit, uPivot.z + c.y * uMeshUnit);
 }
 
+// Rodrigues' rotation of v by angle a about the unit axis k.
+vec3 rotateAbout(vec3 v, vec3 k, float a) {
+  return v * cos(a) + cross(k, v) * sin(a) + k * dot(k, v) * (1.0 - cos(a));
+}
+
 void main() {
   vec3 p = position;
   vec3 n = normal;
   if (aTongue > 0.0) moveTongue(p, n, aTongue);
+  // Swing an ear flap up on its hinge, then turn it about its own length to face forward. The
+  // flap bends near the root, where its weight eases in.
+  if (aEar != 0.0) {
+    bool right = aEar > 0.0;
+    float a = (right ? uEarLift.y : uEarLift.x) * abs(aEar);
+    vec3 pivot = right ? uEarPivotR : uEarPivotL;
+    vec3 axis = right ? uEarAxisR : uEarAxisL;
+    p = pivot + rotateAbout(p - pivot, axis, a);
+    n = rotateAbout(n, axis, a);
+    // The left ear is a mirror image, so it turns the other way.
+    vec3 along = rotateAbout(right ? uEarDownR : uEarDownL, axis, a);
+    float twist = sign(aEar) * uEarTwist * a / uEarLiftMax;
+    p = pivot + rotateAbout(p - pivot, along, twist);
+    n = rotateAbout(n, along, twist);
+  }
   // The model's mouth floor is sculpted as a second tongue, under the real one. Sink it flat
   // while the tongue is out, so no tongue stays behind.
   p.y -= aFloorDrop * smoothstep(0.0, 0.3, uTongue.x);
@@ -286,6 +323,12 @@ uniform float uGhost;
 uniform float uMelt;
 uniform float uEyeRed;
 uniform float uCap;
+uniform float uPumpkin;
+uniform float uMouthGlow;
+// The middle of the mouth, where a glow inside it centers, in mesh units.
+uniform vec3 uGlowAt;
+uniform vec3 uPivot;
+uniform float uMeshUnit;
 /** Which way the face points, in world space. */
 uniform vec3 uFacing;
 varying float vFang;
@@ -371,8 +414,18 @@ void main() {
     vec3 dr = vLocal - uEyeR;
     float r2 = uEyeRadius * uEyeRadius;
     float glow = exp(-dot(dl, dl) / r2) * (1.0 - uWink.x) + exp(-dot(dr, dr) / r2) * (1.0 - uWink.y);
-    col += mix(vec3(0.75, 1.0, 0.45), vec3(1.0, 0.1, 0.06), uEyeRed) * glow * 0.7 * uEyeGlow * uEyeOpen;
+    vec3 eyeColor = mix(mix(vec3(0.75, 1.0, 0.45), vec3(1.0, 0.1, 0.06), uEyeRed), vec3(1.0, 0.6, 0.15), uPumpkin);
+    col += eyeColor * glow * 0.7 * uEyeGlow * uEyeOpen;
   }
+
+  // Jack-o'-lantern grooves: dark lines running over the head from front to back, like a pumpkin's ribs.
+  float around = atan(vLocal.x - uMidX, vLocal.z - uPivot.z);
+  col *= 1.0 - 0.45 * uPumpkin * (1.0 - smoothstep(0.0, 0.3, abs(sin(around * 4.5))));
+  // A light inside the mouth: brightest deep inside, and soft through the muzzle, like a lantern.
+  vec3 dg = (vLocal - uGlowAt) / (vec3(0.3, 0.2, 0.32) * uMeshUnit);
+  float candle = 0.75 + 0.25 * sin(uTime * 23.0) * sin(uTime * 13.7 + 2.0);
+  vec3 glowColor = mix(vec3(0.75, 1.0, 0.25), vec3(1.0, 0.55, 0.12) * candle, uPumpkin);
+  col += glowColor * exp(-dot(dg, dg)) * uMouthGlow * 1.2;
 
   // Mouth interior: the faces stretched across the lip seam.
   float inMouth = (1.0 - smoothstep(uMouthHalfW * 0.8, uMouthHalfW * 1.2, abs(vLocal.x - uMidX)))
@@ -405,6 +458,14 @@ const PALETTE = [
   [0xa82222, 0xff8070],
   [0x2a9a36, 0x7dff8a],
 ].map(([base, rim]) => [new THREE.Color(base), new THREE.Color(rim)]);
+
+/** Jack-o'-lantern orange, as [base, rim]. */
+const PUMPKIN = [new THREE.Color(0xc0500e), new THREE.Color(0xffa040)];
+
+/** How far an ear swings up on its hinge at full lift, in radians. About 150°, so a hanging ear stands up. */
+const EAR_LIFT = 2.6;
+/** How far a fully lifted ear turns about its own length, in radians, so its inside faces the audience. */
+const EAR_TWIST = 1.2;
 
 /** How much of a trick's tilt and nod the base of the neck follows. */
 const NECK_FOLLOW = 1 / 3;
@@ -470,6 +531,10 @@ export class Head implements FlingSource {
   readonly hasTongue: boolean;
   /** Only the Labrador has separate canine teeth to grow into fangs. */
   readonly hasFangs: boolean;
+  /** Only the Labrador has floppy ears that lift. */
+  readonly hasEars: boolean;
+  /** Only the Labrador has the top of its nose measured, for the biscuit. */
+  readonly hasNoseTop: boolean;
   spray = 0;
   /** Vertices far from the roll axis (ears, cheeks, crown), where a shake flings water from. */
   private flingVerts: number[];
@@ -484,15 +549,35 @@ export class Head implements FlingSource {
   zzz = 0;
   /** How far the head has turned into a see-through ghost, 0 to 1. */
   ghost = 0;
+  /** How bright the firefly glows, 0 (gone) to 1. fireflyWorld() says where it is. */
+  firefly = 0;
+  private fireflyAt = new THREE.Vector3();
+  private fireflyFree = new THREE.Vector3();
+  /** Size of the dog biscuit, 0 (none) to 1 at head scale 1. treatWorld() says where it is. */
+  treat = 0;
+  /** Radians the biscuit has spun in the air. */
+  treatSpin = 0;
+  private treatAt = new THREE.Vector3();
+  /** Where the biscuit left the nose. */
+  private treatLaunch = new THREE.Vector3();
+  private treatTossed = false;
+  private treatMouth = new THREE.Vector3();
+  private treatFlight = new THREE.Vector3();
+  /** Brightness of the rainbow behind the head, 0 to 1, and how much of its arc is drawn, signed by its starting side. */
+  rainbow = 0;
+  rainbowArc = 0;
 
   private constructor(
     geometry: THREE.BufferGeometry,
     private rig: Rig,
     map: THREE.Texture | null,
-    opts: { alphaCut?: number; doubleSided?: boolean } = {},
+    opts: { alphaCut?: number; doubleSided?: boolean; ears?: EarHinge[] } = {},
   ) {
     this.hasTongue = geometry.hasAttribute('aTongue');
     this.hasFangs = geometry.hasAttribute('aFang');
+    this.hasEars = !!opts.ears;
+    this.hasNoseTop = !!rig.noseTop;
+    const [earL, earR] = opts.ears ?? [];
     this.uniforms = {
       uJaw: { value: 0 },
       uWidth: { value: 0 },
@@ -536,6 +621,18 @@ export class Head implements FlingSource {
       uNeckFix: { value: new THREE.Matrix3() },
       uNeckPull: { value: new THREE.Vector3() },
       uCap: { value: 0 },
+      uEarLift: { value: new THREE.Vector2() },
+      uEarPivotL: { value: earL?.pivot ?? new THREE.Vector3() },
+      uEarAxisL: { value: earL?.axis ?? new THREE.Vector3(0, 0, 1) },
+      uEarDownL: { value: earL?.down ?? new THREE.Vector3(0, -1, 0) },
+      uEarPivotR: { value: earR?.pivot ?? new THREE.Vector3() },
+      uEarAxisR: { value: earR?.axis ?? new THREE.Vector3(0, 0, 1) },
+      uEarDownR: { value: earR?.down ?? new THREE.Vector3(0, -1, 0) },
+      uEarTwist: { value: EAR_TWIST },
+      uEarLiftMax: { value: EAR_LIFT },
+      uPumpkin: { value: 0 },
+      uMouthGlow: { value: 0 },
+      uGlowAt: { value: rig.mouthFront.clone().add(new THREE.Vector3(0, 0.05, -0.3).divideScalar(rig.scale)) },
       uFacing: { value: new THREE.Vector3(0, 0, 1) },
       uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
@@ -615,7 +712,9 @@ export class Head implements FlingSource {
     }
     const fangs = labradorFangs(geometry, parts, geometry.attributes.aJaw as THREE.BufferAttribute);
     if (fangs) geometry.setAttribute('aFang', fangs);
-    return new Head(geometry, LABRADOR_RIG, std.map, { alphaCut: std.alphaTest, doubleSided: std.side === THREE.DoubleSide });
+    const ears = labradorEars(geometry, parts);
+    if (ears) geometry.setAttribute('aEar', ears.weights);
+    return new Head(geometry, LABRADOR_RIG, std.map, { alphaCut: std.alphaTest, doubleSided: std.side === THREE.DoubleSide, ears: ears?.hinges });
   }
 
   /** Green edge glow strength: 0 is none. */
@@ -675,6 +774,21 @@ export class Head implements FlingSource {
     return out.copy(this.rig.mouthFront).setZ(this.rig.mouthFront.z + BUBBLE_RADIUS / this.rig.scale).applyMatrix4(this.mesh.matrixWorld);
   }
 
+  /** Where the firefly is, in world space. */
+  fireflyWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.copy(this.fireflyAt);
+  }
+
+  /** Where the dog biscuit is, in world space. */
+  treatWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.copy(this.treatAt);
+  }
+
+  /** The middle of the mouth, in world space, for sparks a burp lets out. */
+  mouthWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.copy(this.rig.mouthFront).applyMatrix4(this.mesh.matrixWorld);
+  }
+
   /** A random point on the outer head and its velocity, in world space, for a flung drop. */
   flingPoint(pos: THREE.Vector3, vel: THREE.Vector3) {
     const i = this.flingVerts[Math.floor(Math.random() * this.flingVerts.length)];
@@ -712,7 +826,10 @@ export class Head implements FlingSource {
     u.uMelt.value = pose.melt;
     u.uFangs.value = pose.fangs;
     u.uEyeRed.value = pose.eyeRed;
-    this.setColors(pose.colors);
+    (u.uEarLift.value as THREE.Vector2).set(pose.earL, pose.earR).multiplyScalar(EAR_LIFT);
+    u.uPumpkin.value = pose.pumpkin;
+    u.uMouthGlow.value = pose.mouthGlow;
+    this.setColors(pose.colors, pose.pumpkin);
     this.setBubble(pose.bubble, t);
     u.uWidth.value = mouth.width;
     u.uFire.value = fire;
@@ -772,14 +889,33 @@ export class Head implements FlingSource {
     (u.uNeckPull.value as THREE.Vector3).set(0, 0, -pose.lean / g.scale.x);
     u.uCap.value = pose.cap;
     (u.uFacing.value as THREE.Vector3).copy(facing);
+    // The firefly flies free around the head, then gets pulled into the mouth for the catch.
+    this.firefly = pose.firefly;
+    if (pose.firefly > 0) {
+      const free = this.fireflyFree.set(pose.flyX, pose.flyY, pose.flyZ).multiplyScalar(g.scale.x / this.rig.scale).add(g.position);
+      this.mouthWorld(this.fireflyAt).lerp(free, 1 - pose.flyCatch);
+    }
+    // The biscuit rides on the nose until tossed, flies from where it left, then drops into the mouth.
+    const headScale = g.scale.x / this.rig.scale;
+    this.treat = pose.treat * headScale;
+    this.treatSpin = pose.treatSpin;
+    if (pose.treat > 0 && this.rig.noseTop) {
+      if (!pose.treatFree || !this.treatTossed) this.treatLaunch.copy(this.rig.noseTop).applyMatrix4(this.mesh.matrixWorld);
+      this.treatAt.copy(this.treatLaunch);
+      if (pose.treatFree) this.treatAt.add(this.treatFlight.set(pose.treatX, pose.treatY, pose.treatZ).multiplyScalar(headScale));
+      this.treatAt.lerp(this.mouthWorld(this.treatMouth), pose.treatCatch);
+    }
+    this.treatTossed = pose.treatFree > 0;
+    this.rainbow = pose.rainbow;
+    this.rainbowArc = pose.rainbowArc;
   }
 
-  /** Blends between the palette entries on either side of `at`. */
-  private setColors(at: number) {
+  /** Blends between the palette entries on either side of `at`, then toward pumpkin orange. */
+  private setColors(at: number, pumpkin: number) {
     const i = Math.min(Math.floor(at), PALETTE.length - 2);
     const f = at - i;
-    (this.uniforms.uBase.value as THREE.Color).lerpColors(PALETTE[i][0], PALETTE[i + 1][0], f);
-    (this.uniforms.uRim.value as THREE.Color).lerpColors(PALETTE[i][1], PALETTE[i + 1][1], f);
+    (this.uniforms.uBase.value as THREE.Color).lerpColors(PALETTE[i][0], PALETTE[i + 1][0], f).lerp(PUMPKIN[0], pumpkin);
+    (this.uniforms.uRim.value as THREE.Color).lerpColors(PALETTE[i][1], PALETTE[i + 1][1], f).lerp(PUMPKIN[1], pumpkin);
   }
 
   /**
@@ -983,6 +1119,88 @@ function labradorFangs(geometry: THREE.BufferGeometry, parts: Int32Array, jaw: T
     fang.set([t.x / t.n, t.high, t.z / t.n, 1], i * 4);
   }
   return new THREE.BufferAttribute(fang, 4);
+}
+
+/** The line an ear flap swings up on, in mesh units. A positive angle about the axis lifts the ear outward and up. */
+interface EarHinge {
+  pivot: THREE.Vector3;
+  axis: THREE.Vector3;
+  /** From the pivot toward the hanging tip, unit length. */
+  down: THREE.Vector3;
+}
+
+/** The Lab's ear flaps hang free below this height, and join the skull along it. */
+const EAR_ROOT_Y = 4.9;
+/** How far below the root the flap bends, in mesh units. Below that it swings as one piece. */
+const EAR_BEND = 0.3;
+
+/**
+ * The Lab's floppy ears are part of the main mesh. Each flap touches the rest of the head only
+ * along its root, at about EAR_ROOT_Y, so a flood fill from the ear tip that stays below the root
+ * finds the flap and nothing else. Returns each vertex's lift weight, positive on the +x ear and
+ * negative on the -x ear, easing in over EAR_BEND below the root, plus each ear's hinge along its
+ * root, left ear first. Null if either ear doesn't turn up.
+ */
+function labradorEars(geometry: THREE.BufferGeometry, parts: Int32Array): { weights: THREE.BufferAttribute; hinges: EarHinge[] } | null {
+  const pos = geometry.attributes.position;
+  const index = geometry.index;
+  if (!index) return null;
+  // Weld the copies that UV seams make, so the fill can cross the seams.
+  const welded = new Map<string, number>();
+  const weld = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const key = `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+    weld[i] = welded.get(key) ?? welded.set(key, i).get(key)!;
+  }
+  const near = new Map<number, number[]>();
+  const link = (a: number, b: number) => (near.get(a) ?? near.set(a, []).get(a)!).push(b);
+  for (let t = 0; t < index.count; t += 3) {
+    const [a, b, c] = [weld[index.getX(t)], weld[index.getX(t + 1)], weld[index.getX(t + 2)]];
+    for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+      link(p, q);
+      link(q, p);
+    }
+  }
+  const weights = new Float32Array(pos.count);
+  const hinges: EarHinge[] = [];
+  for (const side of [-1, 1]) {
+    // The tip: the lowest point of the hanging ear, beside the cheek and behind the eye.
+    let tip = -1;
+    for (let i = 0; i < pos.count; i++) {
+      const [x, y, z] = [pos.getX(i) * side, pos.getY(i), pos.getZ(i)];
+      if (x > 0.5 && y > 4.0 && y < 4.5 && z > 3.2 && z < 3.8 && (tip < 0 || y < pos.getY(tip))) tip = weld[i];
+    }
+    if (tip < 0) return null;
+    const flap = new Set([tip]);
+    const queue = [tip];
+    while (queue.length) {
+      for (const v of near.get(queue.pop()!) ?? []) {
+        if (flap.has(v) || pos.getY(v) >= EAR_ROOT_Y) continue;
+        flap.add(v);
+        queue.push(v);
+      }
+    }
+    // A leak into the skull would take most of the head along. A flap is a few hundred points.
+    if (flap.size > 2000) return null;
+    // The hinge runs along the root, from its back end to its front end.
+    let back = -1;
+    let front = -1;
+    for (const v of flap) {
+      if (pos.getY(v) < EAR_ROOT_Y - 0.06) continue;
+      if (back < 0 || pos.getZ(v) < pos.getZ(back)) back = v;
+      if (front < 0 || pos.getZ(v) > pos.getZ(front)) front = v;
+    }
+    const b = new THREE.Vector3().fromBufferAttribute(pos, back);
+    const f = new THREE.Vector3().fromBufferAttribute(pos, front);
+    const pivot = b.clone().lerp(f, 0.5);
+    const down = new THREE.Vector3().fromBufferAttribute(pos, tip).sub(pivot).normalize();
+    // The axis is mirrored for the left ear, so a positive angle lifts both ears outward.
+    hinges.push({ pivot, axis: f.sub(b).normalize().multiplyScalar(side), down });
+    for (let i = 0; i < pos.count; i++) {
+      if (flap.has(weld[i]) && parts[i] === parts[tip]) weights[i] = side * smoothstep(EAR_ROOT_Y, EAR_ROOT_Y - EAR_BEND, pos.getY(i));
+    }
+  }
+  return { weights: new THREE.BufferAttribute(weights, 1), hinges };
 }
 
 /**

@@ -19,6 +19,9 @@ import { TRICKS, type Cue, type Trick } from './tricks';
 import { Droplets } from './droplets';
 import { Monkeys } from './monkeys';
 import { Snooze } from './zzz';
+import { Firefly } from './firefly';
+import { Treat } from './treat';
+import { Rainbow } from './rainbow';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -45,7 +48,14 @@ const droplets = new Droplets();
 const gum = new Droplets(0xff6ec0);
 const monkeys = new Monkeys(stage.camera);
 const snooze = new Snooze();
-stage.scene.add(droplets.points, gum.points, monkeys.group, snooze.group);
+const firefly = new Firefly();
+/** Firefly sparks that a burp lets out. */
+const sparks = new Droplets(0xc8ff50);
+/** Biscuit crumbs from the crunching. */
+const crumbs = new Droplets(0xe0a050);
+const treat = new Treat();
+const rainbow = new Rainbow();
+stage.scene.add(droplets.points, gum.points, monkeys.group, snooze.group, firefly.group, sparks.points, crumbs.points, treat.sprite, rainbow.mesh);
 
 let voice: Voice | null = null;
 let sfx: Sfx | null = null;
@@ -120,9 +130,9 @@ function trigger(effect: EffectName) {
 /** Cues still waiting from the current trick. A new trick cancels them, so skipping past a lunge doesn't strike lightning. */
 let cueTimers: number[] = [];
 
-/** Only the Labrador has a separate tongue and canines, for the tricks that need them. */
+/** Only the Labrador has a separate tongue, canines, lifting ears and a measured nose, for the tricks that need them. */
 function canDo(trick: Trick): boolean {
-  return !!head && (head.hasTongue || !trick.tongue) && (head.hasFangs || !trick.fangs);
+  return !!head && (head.hasTongue || !trick.tongue) && (head.hasFangs || !trick.fangs) && (head.hasEars || !trick.ears) && (head.hasNoseTop || !trick.nose);
 }
 
 /** The trick that played last, for the A key to repeat. */
@@ -147,7 +157,11 @@ function runCue(cue: Cue, dir: number) {
   else if (cue === 'douse') fire.douse();
   else if (cue === 'lightning') lightning.strike(clock);
   else if (cue === 'monkeys') monkeys.launch(clock, dir);
-  else if (head) gum.burst(head.bubbleWorld(new THREE.Vector3()), 40, 2.2);
+  else if (cue === 'sparks') {
+    if (head) sparks.burst(head.mouthWorld(new THREE.Vector3()), 30, 1.6);
+  } else if (cue === 'crumbs') {
+    if (head) crumbs.burst(head.mouthWorld(new THREE.Vector3()), 20, 1.2);
+  } else if (head) gum.burst(head.bubbleWorld(new THREE.Vector3()), 40, 2.2);
 }
 
 // --- Autopilot: a small trick now and then, when nobody presses anything or speaks ---
@@ -385,12 +399,15 @@ function updatePixelScale() {
   steam.setPixelScale(scale);
   droplets.setPixelScale(scale);
   gum.setPixelScale(scale);
+  sparks.setPixelScale(scale);
+  crumbs.setPixelScale(scale);
   const buffer = stage.renderer.getDrawingBufferSize(new THREE.Vector2());
   steam.setSize(buffer.x, buffer.y);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
   steam.setHalfWidth(Math.tan((camera.fov * Math.PI) / 360) * 5.7 * camera.aspect);
   pipes.setVentX(steam.ventX);
   backdrop.fit(camera);
+  rainbow.fit(camera);
 }
 addEventListener('resize', updatePixelScale);
 updatePixelScale();
@@ -421,6 +438,11 @@ function frame(now: number) {
   head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
   droplets.update(dt, head);
   gum.update(dt, null);
+  sparks.update(dt, null);
+  crumbs.update(dt, null);
+  firefly.update(head);
+  treat.update(head);
+  rainbow.update(clock, head?.rainbow ?? 0, head?.rainbowArc ?? 0);
   snooze.update(dt, head);
   monkeys.update(clock);
   if (mouth.level > 0.15) noteActivity();

@@ -20,10 +20,18 @@ export type TrickName =
   | 'lunge'
   | 'hiccups'
   | 'bubble'
-  | 'vampire';
+  | 'vampire'
+  | 'perk'
+  | 'doorbell'
+  | 'firefly'
+  | 'scratch'
+  | 'pumpkin'
+  | 'treat'
+  | 'wizard'
+  | 'rainbow';
 
 /** Things a trick sets off around the head. */
-export type Cue = 'steam' | 'wideSteam' | 'flare' | 'douse' | 'lightning' | 'monkeys' | 'pop';
+export type Cue = 'steam' | 'wideSteam' | 'flare' | 'douse' | 'lightning' | 'monkeys' | 'pop' | 'sparks' | 'crumbs';
 
 /** Offsets from the head's normal behavior. restPose() changes nothing. */
 export interface Pose {
@@ -77,6 +85,36 @@ export interface Pose {
   fangs: number;
   /** Turns the eyes blood red, 0 to 1. */
   eyeRed: number;
+  /** Lifts each floppy ear: 0 hangs, 1 stands straight up. L is the ear on the viewer's left. */
+  earL: number;
+  earR: number;
+  /** How bright the firefly glows, 0 (gone) to 1. */
+  firefly: number;
+  /** Where the firefly is, from the neck pivot, in world units at head scale 1. +x is the viewer's right. */
+  flyX: number;
+  flyY: number;
+  flyZ: number;
+  /** Pulls the firefly from its flight path into the mouth, 0 to 1. */
+  flyCatch: number;
+  /** Turns the head into a jack-o'-lantern: orange, with grooves, 0 to 1. */
+  pumpkin: number;
+  /** Lights the mouth from inside, 0 to 1: a candle in a pumpkin, or a swallowed firefly. */
+  mouthGlow: number;
+  /** Size of the dog biscuit, 0 (none) to 1. It balances on the nose until tossed. */
+  treat: number;
+  /** 1 once the biscuit is tossed. It then flies treatX, Y and Z from where it left the nose, in world units at head scale 1. */
+  treatFree: number;
+  treatX: number;
+  treatY: number;
+  treatZ: number;
+  /** Pulls the tossed biscuit into the mouth, 0 to 1. */
+  treatCatch: number;
+  /** Radians the biscuit has spun in the air. */
+  treatSpin: number;
+  /** Brightness of the rainbow behind the head, 0 to 1. */
+  rainbow: number;
+  /** How much of the rainbow's arc is drawn, 0 to 1. The sign is the side it starts from: + the viewer's right. */
+  rainbowArc: number;
 }
 
 export interface Trick {
@@ -86,6 +124,10 @@ export interface Trick {
   tongue: boolean;
   /** Needs separate upper canines in the model. Only the Labrador has them. */
   fangs?: boolean;
+  /** Needs floppy ears that can lift. Only the Labrador has them. */
+  ears?: boolean;
+  /** Needs the top of the nose measured, for a biscuit to balance on. Only the Labrador has it. */
+  nose?: boolean;
   /** [seconds from the start, cue] pairs. */
   cues?: [number, Cue][];
   /**
@@ -114,6 +156,11 @@ export function restPose(): Pose {
     rise: 0, spray: 0, ghost: 0,
     melt: 0, colors: 0, lunge: 0, zzz: 0, bubble: 0,
     fangs: 0, eyeRed: 0, lean: 0, cap: 0,
+    earL: 0, earR: 0,
+    firefly: 0, flyX: 0, flyY: 0, flyZ: 0, flyCatch: 0,
+    pumpkin: 0, mouthGlow: 0,
+    treat: 0, treatFree: 0, treatX: 0, treatY: 0, treatZ: 0, treatCatch: 0, treatSpin: 0,
+    rainbow: 0, rainbowArc: 0,
   };
 }
 
@@ -132,9 +179,322 @@ export const MELT_DOWN = 4.8;
 const MELT_LINES: [number, number][] = [[0.03, 1.03], [1.29, 2.11], [2.52, 3.53], [3.79, 7.4]];
 /** When the napping dog wakes with a start. trick-sounds.ts snores until then. */
 export const NAP_WAKE = 5.2;
+/** When the ear springs up, partway through the owner's whistle. */
+export const PERK_AT = 0.5;
+/** When the dog barks at the doorbell. */
+export const DOORBELL_BARKS = [1.0, 1.3];
+/** When the dog snaps the firefly out of the air, gulps it down, and burps it back out. */
+export const FIREFLY_CATCH = 3.75;
+export const FIREFLY_GULP = 4.0;
+export const FIREFLY_BURP = 5.1;
+/** When each scratching stroke ends, faster and faster. Each one jostles the head. */
+export const SCRATCH_STROKES = [0.7, 0.98, 1.22, 1.42, 1.6, 1.76, 1.9, 2.03, 2.15, 2.27, 2.38];
+/** When the candle inside the jack-o'-lantern lights, and when the dog blows it out. */
+export const PUMPKIN_LIGHT = 0.9;
+export const PUMPKIN_OUT = 3.4;
+/** When the dog tosses the biscuit off its nose, catches it, crunches it, and swallows. */
+export const TREAT_FLIP = 2.7;
+export const TREAT_CATCH = 3.45;
+export const TREAT_CRUNCHES = [3.75, 4.0, 4.25, 4.5];
+export const TREAT_GULP = 4.85;
+
+/** A note: [start, length, MIDI note number]. The units are each tune's own beat. */
+export type Note = [number, number, number];
+
+/**
+ * "We're off to see the Wizard, the Wonderful Wizard of Oz", in 6/8, in eighth notes. From John
+ * Chambers' ABC transcription of a Wizard of Oz medley. A bar of oom-pah comes first, so the
+ * melody starts with its pickup at eighth 5.
+ */
+export const WIZARD_TUNE: Note[] = [
+  [5, 1, 69], [6, 2, 74], [8, 1, 69], [9, 2, 66], [11, 1, 67], [12, 1, 69], [13, 2, 74],
+  [17, 1, 69], [18, 1, 71], [19, 1, 69], [20, 1, 67], [21, 1, 66], [22, 1, 67], [23, 1, 64], [24, 4, 62],
+];
+/** When the march starts, and seconds per eighth note. The head bobs on every third eighth. */
+export const WIZARD_START = 0.2;
+export const WIZARD_EIGHTH = 0.15;
+
+/** "Somewhere over the rainbow, way up high", in quarter notes, on a music box. */
+export const RAINBOW_TUNE: Note[] = [
+  [0, 2, 74], [2, 2, 86], [4, 1, 85], [5, 0.5, 81], [5.5, 0.5, 83], [6, 1, 85], [7, 1, 86], [8, 2, 74], [10, 2, 83], [12, 4, 81],
+];
+/** When the music box starts, and seconds per quarter note. */
+export const RAINBOW_START = 0.4;
+export const RAINBOW_BEAT = 0.42;
+
+/**
+ * The firefly's flight, as [seconds, x, y, z] keys in world units at head scale 1, from the neck
+ * pivot. x runs toward the trick's side. It darts in from off stage, loops around the face, and
+ * hovers in front of the nose just before the catch.
+ */
+const FLY_PATH: [number, number, number, number][] = [
+  [0, 2.6, 0.6, 0.7],
+  [0.8, 1.1, 0.55, 1.2],
+  [1.5, -0.3, 0.7, 1.2],
+  [2.1, -1.1, 0.25, 1.25],
+  [2.7, -0.35, 0.0, 1.5],
+  [3.2, 0.55, 0.35, 1.4],
+  [FIREFLY_CATCH - 0.2, 0.1, 0.05, 1.05],
+  [FIREFLY_CATCH, 0, -0.05, 0.85],
+];
+
+/** Where the firefly is t seconds in, toward the dir side, with a buzzing jitter. trick-sounds.ts pans the buzz along it. */
+export function fireflyAt(t: number, dir: number): [number, number, number] {
+  const at = (axis: number) => keys(t, FLY_PATH.map((k) => [k[0], k[axis]]));
+  const jitter = 1 - ease((t - (FIREFLY_CATCH - 0.4)) / 0.3);
+  return [
+    dir * (at(1) + 0.05 * Math.sin(t * 23) * jitter),
+    at(2) + 0.05 * Math.sin(t * 31 + 1) * jitter,
+    at(3) + 0.04 * Math.sin(t * 19 + 2) * jitter,
+  ];
+}
 
 /** In the order the trick button plays them. */
 export const TRICKS: Trick[] = [
+  {
+    // Licks its nose: the tongue comes out, curls up, and swipes across once and back. Each
+    // stroke has its own speed and reach, the tip flicks up on each pass, and the head leans in.
+    name: 'lick',
+    seconds: 1.8,
+    tongue: true,
+    auto: true,
+    pose(t, p, dir) {
+      const e = hold(t, 0, 0.2, 1.4, 1.7);
+      p.jaw = 0.75;
+      p.jawMix = e;
+      // Far enough out that the broad front of the tongue clears the upper lip, then curled up
+      // to nearly upright, so the body of the tongue presses flat against the nose, not just its edge.
+      p.tongueOut = 1.8 * hold(t, 0.1, 0.35, 1.2, 1.5);
+      p.tongueCurl = keys(t, [[0.3, 0], [0.55, 1.25], [0.68, 1.45], [0.78, 1.2], [0.92, 1.5], [1.08, 1.25], [1.35, 0]]);
+      const side = dir * keys(t, [[0.45, 0], [0.62, 0.09], [0.86, -0.08], [1.05, 0.02], [1.25, 0]]);
+      p.tongueSide = side;
+      p.yaw = 0.8 * side;
+      p.roll = -0.6 * side;
+      p.pitch = -0.1 * e;
+      p.eyeOpen = 1 - 0.6 * e;
+      p.idle = 1 - 0.7 * e;
+    },
+  },
+  {
+    // Balances a dog biscuit on its nose, trembling with the effort of waiting. Then it flips the
+    // biscuit up, catches it, and crunches it happily.
+    name: 'treat',
+    seconds: 5.6,
+    tongue: false,
+    nose: true,
+    cues: [[TREAT_CRUNCHES[0], 'crumbs'], [TREAT_CRUNCHES[2], 'crumbs']],
+    pose(t, p, dir) {
+      const wait = hold(t, 0.6, 1.2, TREAT_FLIP - 0.1, TREAT_FLIP);
+      // The tremble grows as the wait drags on.
+      const tremble = Math.sin(t * 2 * Math.PI * 9) * wait * (0.004 + 0.005 * ease((t - 1) / 1.5));
+      const gulp = hold(t, TREAT_GULP, TREAT_GULP + 0.08, TREAT_GULP + 0.12, TREAT_GULP + 0.35);
+      // Nose up to hold the biscuit level, a flick up to toss it, then down to meet it.
+      p.pitch = keys(t, [[0, 0], [0.4, -0.12], [TREAT_FLIP, -0.12], [TREAT_FLIP + 0.1, -0.4], [TREAT_FLIP + 0.35, -0.42], [TREAT_CATCH, -0.1], [TREAT_CATCH + 0.15, 0.05], [4.9, 0.05], [5.5, 0]]) + tremble + 0.1 * gulp;
+      p.roll = 0.6 * tremble + 0.2 * dir * hold(t, 4.95, 5.2, 5.3, 5.6);
+      p.treat = t < TREAT_CATCH ? keys(t, [[0.3, 0], [0.42, 1.15], [0.52, 1]]) : 0;
+      const toss = t - TREAT_FLIP;
+      if (toss > 0) {
+        // Thrown up, peaking 0.38 above the nose after 0.3 s, low enough to stay on screen at
+        // show size, and turning over twice.
+        p.treatFree = 1;
+        p.treatX = 0.06 * dir * toss;
+        p.treatY = 2.5 * toss - 4.1 * toss * toss;
+        p.treatZ = 0.12 * toss;
+        p.treatSpin = (4 * Math.PI * dir * toss) / (TREAT_CATCH - TREAT_FLIP);
+      }
+      p.treatCatch = ease((t - (TREAT_CATCH - 0.15)) / 0.15);
+      // Each crunch opens the jaw and bites down on the beat.
+      let chew = 0;
+      for (const at of TREAT_CRUNCHES) chew = Math.max(chew, hold(t, at - 0.14, at - 0.06, at - 0.05, at));
+      p.jaw = keys(t, [[0.2, RELAXED_JAW], [0.4, 0.3], [TREAT_CATCH - 0.3, 0.3], [TREAT_CATCH - 0.1, 1.1], [TREAT_CATCH, 0.25]]) + 0.45 * chew;
+      p.jawMix = hold(t, 0.1, 0.4, 5.0, 5.4);
+      p.rise = 0.05 * hold(t, TREAT_CATCH - 0.1, TREAT_CATCH, TREAT_CATCH + 0.05, TREAT_CATCH + 0.3) - 0.03 * gulp;
+      p.earL = p.earR = 0.25 * hold(t, 0.4, 0.7, TREAT_FLIP, TREAT_FLIP + 0.3);
+      p.eyeGlow = 1 + 0.7 * wait + hold(t, TREAT_CATCH, TREAT_CATCH + 0.1, 4.6, 5.2);
+      p.eyeOpen = 1 - 0.55 * hold(t, 3.65, 3.8, 4.7, 5.0);
+      p.idle = 1 - hold(t, 0, 0.4, 5.0, 5.6);
+    },
+  },
+  {
+    // "We're off to see the Wizard" on a kazoo, over an oom-pah bass. The head bobs side to side
+    // on the beat, hopping like Dorothy skipping down the yellow brick road, and the ears flap.
+    // On the last note it stops and lifts its nose: ta-da.
+    name: 'wizard',
+    seconds: 5.0,
+    tongue: false,
+    pose(t, p, dir) {
+      const eighth = (n: number) => WIZARD_START + n * WIZARD_EIGHTH;
+      const last = WIZARD_TUNE[WIZARD_TUNE.length - 1];
+      const e = hold(t, 0, WIZARD_START, 4.3, 4.9);
+      // +1 on even beats and -1 on odd ones, so the head lands on a side on each beat.
+      const beat = (t - WIZARD_START) / (3 * WIZARD_EIGHTH);
+      const bob = e * (1 - ease((t - eighth(last[0])) / 0.3));
+      const swing = Math.cos(Math.PI * beat) * bob;
+      p.roll = 0.2 * dir * swing;
+      p.yaw = 0.12 * dir * swing;
+      p.rise = 0.04 * Math.abs(Math.sin(Math.PI * beat)) * bob;
+      // The ear on the high side flies up as the head lands.
+      p.earL = 0.5 * Math.max(0, dir * swing) ** 2;
+      p.earR = 0.5 * Math.max(0, -dir * swing) ** 2;
+      p.pitch = -0.15 * hold(t, eighth(last[0]), eighth(last[0]) + 0.1, eighth(last[0] + last[1]), 4.9);
+      // The mouth hums along, opening a little on each note.
+      let hum = 0;
+      for (const [at, len] of WIZARD_TUNE) hum = Math.max(hum, hold(t, eighth(at), eighth(at) + 0.04, eighth(at + len) - 0.05, eighth(at + len)));
+      p.jaw = 0.35 + 0.3 * hum;
+      p.jawMix = e;
+      p.eyeGlow = 1 + 0.6 * e;
+      p.eyeOpen = 1 - 0.3 * e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // A rainbow arcs across the sky behind the dog as a music box plays "Somewhere over the
+    // rainbow". The dog gazes up dreamily, swaying, and one ear rises on "way up high".
+    name: 'rainbow',
+    seconds: 7.8,
+    tongue: false,
+    pose(t, p, dir) {
+      const beat = (b: number) => RAINBOW_START + b * RAINBOW_BEAT;
+      const e = hold(t, 0.2, 1.4, 6.8, 7.7);
+      p.rainbow = hold(t, 0.2, 0.6, 6.6, 7.6);
+      // The arc is drawn by "way", then hangs there until the music box rings out.
+      p.rainbowArc = dir * ease((t - 0.3) / (beat(8) - 0.3));
+      // The nose rises with the octave leap of "Some-where".
+      p.pitch = -0.3 * hold(t, beat(1), beat(2.5), 6.6, 7.6);
+      p.roll = 0.1 * Math.sin((t - 0.4) * 1.6) * e;
+      p.yaw = 0.1 * dir * Math.sin((t - 0.4) * 0.8) * e;
+      const ear = keys(t, [[beat(10), 0], [beat(10) + 0.3, 0.4], [beat(12), 0.4], [beat(12) + 0.3, 0.65], [6.7, 0.65], [7.4, 0]]);
+      if (dir > 0) p.earR = ear;
+      else p.earL = ear;
+      p.rise = 0.03 * hold(t, beat(12), beat(12) + 0.3, 6.7, 7.4);
+      p.eyeOpen = 1 - 0.45 * e;
+      p.eyeGlow = 1 + 0.6 * e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // An owner's whistle from one side. The ear on that side springs straight up, the head turns
+    // and tilts toward the sound, listening, and the ear flops back down.
+    name: 'perk',
+    seconds: 3.4,
+    tongue: false,
+    ears: true,
+    auto: true,
+    pose(t, p, dir) {
+      const e = hold(t, PERK_AT - 0.1, PERK_AT + 0.25, 2.4, 3.2);
+      const ear = earPop(t, PERK_AT, 2.4);
+      if (dir > 0) p.earR = ear;
+      else p.earL = ear;
+      p.yaw = 0.3 * dir * e;
+      // Tilting away from the raised ear stands it up straighter.
+      p.roll = 0.2 * dir * hold(t, PERK_AT + 0.3, PERK_AT + 0.7, 2.3, 3.1);
+      p.rise = 0.04 * hold(t, PERK_AT, PERK_AT + 0.06, PERK_AT + 0.1, PERK_AT + 0.4);
+      p.eyeGlow = 1 + 0.8 * e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // Ding-dong! Trick-or-treaters. Both ears shoot up, the head snaps toward the door, two happy
+    // "boof"s, then a hopeful tilt.
+    name: 'doorbell',
+    seconds: 3.6,
+    tongue: false,
+    ears: true,
+    pose(t, p, dir) {
+      const e = hold(t, 0.15, 0.3, 2.7, 3.5);
+      p.earL = 0.8 * earPop(t, 0.18, 2.6);
+      p.earR = 0.8 * earPop(t, 0.24, 2.65);
+      p.yaw = 0.5 * dir * keys(t, [[0.15, 0], [0.3, 1], [2.7, 1], [3.4, 0]]);
+      let bob = 0;
+      for (const at of DOORBELL_BARKS) bob = Math.max(bob, hold(t, at, at + 0.04, at + 0.1, at + 0.25));
+      p.jaw = RELAXED_JAW + 0.5 * bob;
+      p.jawMix = bob;
+      p.pitch = -0.1 * bob;
+      p.roll = -0.3 * dir * hold(t, 1.7, 2.0, 2.6, 3.3);
+      p.rise = 0.05 * keys(t, [[0.15, 0], [0.22, 1], [0.5, 0]]) + 0.03 * bob;
+      p.eyeGlow = 1 + e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // A firefly buzzes in and loops around the dog's face, the head following it. Snap! Gulp.
+    // The muzzle blinks from inside like a lantern, then a burp lets out a puff of sparks.
+    name: 'firefly',
+    seconds: 6.0,
+    tongue: false,
+    cues: [[FIREFLY_BURP, 'sparks']],
+    pose(t, p, dir) {
+      const e = hold(t, 0, 0.6, 5.4, 6.0);
+      const [x, y, z] = fireflyAt(t, dir);
+      // The fly glows in slow pulses, like a real one.
+      p.firefly = hold(t, 0, 0.15, FIREFLY_CATCH - 0.02, FIREFLY_CATCH) * (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2 * Math.PI * 1.3)));
+      p.flyX = x;
+      p.flyY = y;
+      p.flyZ = z;
+      p.flyCatch = ease((t - (FIREFLY_CATCH - 0.25)) / 0.25);
+      // The head follows a moment behind the fly, until the catch.
+      const [lx, ly, lz] = fireflyAt(Math.max(0, t - 0.2), dir);
+      const follow = hold(t, 0.3, 0.9, FIREFLY_CATCH, FIREFLY_CATCH + 0.6);
+      p.yaw = Math.max(-0.85, Math.min(0.85, Math.atan2(lx, lz))) * follow;
+      p.pitch = -Math.max(-0.45, Math.min(0.45, Math.atan2(ly, Math.hypot(lx, lz)))) * follow;
+      p.lean = 0.12 * hold(t, FIREFLY_CATCH - 0.2, FIREFLY_CATCH, FIREFLY_CATCH + 0.05, FIREFLY_CATCH + 0.4);
+      p.jaw = keys(t, [[3.35, RELAXED_JAW], [FIREFLY_CATCH - 0.12, 1.1], [FIREFLY_CATCH, 0.25], [FIREFLY_BURP - 0.1, 0.25], [FIREFLY_BURP, 1.0], [FIREFLY_BURP + 0.35, 0.3]]);
+      p.jawMix = hold(t, 3.3, 3.45, 5.6, 5.95);
+      // The gulp nods the head and bobs it down.
+      const gulp = hold(t, FIREFLY_GULP, FIREFLY_GULP + 0.08, FIREFLY_GULP + 0.12, FIREFLY_GULP + 0.35);
+      p.pitch += 0.12 * gulp - 0.15 * hold(t, FIREFLY_BURP - 0.05, FIREFLY_BURP + 0.05, FIREFLY_BURP + 0.2, FIREFLY_BURP + 0.5);
+      p.rise = -0.03 * gulp;
+      // Blinks of firefly light inside the mouth, then one bright flash that the burp lets out.
+      p.mouthGlow = Math.max(hold(t, 4.25, 4.32, 4.4, 4.55), hold(t, 4.65, 4.72, 4.8, 4.95), hold(t, FIREFLY_BURP - 0.08, FIREFLY_BURP, FIREFLY_BURP + 0.05, FIREFLY_BURP + 0.3));
+      p.eyeGlow = 1 + 0.4 * follow + 1.2 * hold(t, 4.25, 4.35, 4.9, 5.1);
+      p.eyeOpen = 1 - 0.7 * hold(t, FIREFLY_BURP - 0.05, FIREFLY_BURP + 0.05, FIREFLY_BURP + 0.3, FIREFLY_BURP + 0.6);
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // Scratched in the sweet spot behind one ear: the head leans into it with eyes shut in bliss,
+    // that ear lifts, and the scratching speeds up, jostling the head. Then a contented groan.
+    name: 'scratch',
+    seconds: 3.7,
+    tongue: false,
+    auto: true,
+    pose(t, p, dir) {
+      const e = hold(t, 0, 0.4, 2.8, 3.6);
+      let jostle = 0;
+      for (const at of SCRATCH_STROKES) jostle = Math.max(jostle, hold(t, at, at + 0.02, at + 0.03, at + 0.1));
+      const ear = 0.3 * e + 0.05 * Math.sin(t * 2 * Math.PI * 4) * e;
+      if (dir > 0) p.earR = ear;
+      else p.earL = ear;
+      p.roll = -0.35 * dir * e + 0.03 * jostle;
+      p.yaw = 0.15 * dir * e;
+      p.pitch = -0.12 * e;
+      p.rise = 0.012 * jostle;
+      p.jaw = 0.8;
+      p.jawMix = e;
+      p.eyeOpen = 1 - 0.85 * e;
+      p.eyeGlow = 1 + 0.4 * e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // A jack-o'-lantern: the head turns pumpkin orange with grooves, a match strikes, and a candle
+    // lights inside the mouth and eyes. The dog grins, then blows its own candle out.
+    name: 'pumpkin',
+    seconds: 4.4,
+    tongue: false,
+    pose(t, p, dir) {
+      p.pumpkin = hold(t, 0, 0.6, 3.6, 4.3);
+      p.mouthGlow = hold(t, PUMPKIN_LIGHT, PUMPKIN_LIGHT + 0.15, PUMPKIN_OUT, PUMPKIN_OUT + 0.08);
+      // A wide grin, pursed to blow at the end.
+      p.jaw = keys(t, [[0.7, RELAXED_JAW], [1.0, 0.95], [3.1, 0.95], [3.3, 0.45]]);
+      p.jawMix = hold(t, 0.7, 1.0, 3.7, 4.1);
+      const dark = hold(t, PUMPKIN_OUT, PUMPKIN_OUT + 0.05, 3.8, 4.3);
+      p.eyeGlow = (1 + 1.3 * p.mouthGlow) * (1 - 0.6 * dark);
+      p.roll = 0.08 * dir * Math.sin(t * 2) * p.pumpkin;
+      p.pitch = 0.08 * hold(t, 3.15, 3.3, 3.5, 3.9);
+      p.idle = 1 - 0.7 * p.pumpkin;
+    },
+  },
   {
     // Sticks its tongue out and waggles its head: a taunt.
     name: 'blep',
@@ -172,30 +532,6 @@ export const TRICKS: Trick[] = [
       p.eyeOpen = 1 - 0.85 * e;
       p.idle = 1 - e;
       p.spray = hold(t, 0.05, 0.15, 0.8, 1.05);
-    },
-  },
-  {
-    // Licks its nose: the tongue comes out, curls up, and swipes across once and back. Each
-    // stroke has its own speed and reach, the tip flicks up on each pass, and the head leans in.
-    name: 'lick',
-    seconds: 1.8,
-    tongue: true,
-    auto: true,
-    pose(t, p, dir) {
-      const e = hold(t, 0, 0.2, 1.4, 1.7);
-      p.jaw = 0.75;
-      p.jawMix = e;
-      // Far enough out that the broad front of the tongue clears the upper lip, then curled up
-      // to nearly upright, so the body of the tongue presses flat against the nose, not just its edge.
-      p.tongueOut = 1.8 * hold(t, 0.1, 0.35, 1.2, 1.5);
-      p.tongueCurl = keys(t, [[0.3, 0], [0.55, 1.25], [0.68, 1.45], [0.78, 1.2], [0.92, 1.5], [1.08, 1.25], [1.35, 0]]);
-      const side = dir * keys(t, [[0.45, 0], [0.62, 0.09], [0.86, -0.08], [1.05, 0.02], [1.25, 0]]);
-      p.tongueSide = side;
-      p.yaw = 0.8 * side;
-      p.roll = -0.6 * side;
-      p.pitch = -0.1 * e;
-      p.eyeOpen = 1 - 0.6 * e;
-      p.idle = 1 - 0.7 * e;
     },
   },
   {
@@ -487,6 +823,11 @@ export const TRICKS: Trick[] = [
 /** 0 before a, eases up to 1 at b, holds until c, eases back to 0 at d. */
 function hold(t: number, a: number, b: number, c: number, d: number): number {
   return ease((t - a) / (b - a)) * (1 - ease((t - c) / (d - c)));
+}
+
+/** An ear springing up at `up`, overshooting and wobbling, then flopping back down at `down`. */
+function earPop(t: number, up: number, down: number): number {
+  return keys(t, [[up, 0], [up + 0.12, 1.12], [up + 0.24, 0.9], [up + 0.36, 1.04], [up + 0.46, 1], [down, 1], [down + 0.25, -0.06], [down + 0.4, 0.04], [down + 0.55, 0]]);
 }
 
 /** Eases from key to key through [time, value] pairs, holding the end values outside them. */

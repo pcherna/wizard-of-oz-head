@@ -26,8 +26,8 @@ export class Sfx {
   private brown: AudioBuffer;
   private bus: Record<SoundName, GainNode>;
   private tricks: TrickSounds;
-  /** One gain per trick played recently, for stopTricks() to fade. */
-  private takes: GainNode[] = [];
+  /** The gain the current trick plays through, for stopTricks() to fade. */
+  private take: GainNode | null = null;
   /** The operator's effects volume, shared by all the sounds. */
   private volume: GainNode;
 
@@ -77,12 +77,12 @@ export class Sfx {
    * Returns how long a 'first' clip plays before the head should move, or 0.
    */
   trick(name: TrickName, dir: number): number {
+    // A new trick fades out the last one's sounds, so it starts clean.
+    this.stopTricks();
     // Each trick plays through its own gain, so stopTricks() can fade it out.
     const take = new GainNode(this.ctx);
     take.connect(this.bus.trick);
-    this.takes.push(take);
-    // Older takes have long finished. Dropping them only lets them be collected.
-    if (this.takes.length > 8) this.takes.shift();
+    this.take = take;
     const clip = this.clips[name];
     if (!clip) {
       this.tricks.play(name, dir, take);
@@ -94,11 +94,10 @@ export class Sfx {
     return TRICKS.find((tr) => tr.name === name)?.clip === 'first' ? clip.duration : 0;
   }
 
-  /** Quickly fades out every trick sound still playing, clips included. Fire, steam and thunder carry on. */
+  /** Quickly fades out the trick sound still playing, clips included. Fire, steam and thunder carry on. */
   stopTricks() {
-    const t = this.ctx.currentTime;
-    for (const take of this.takes) take.gain.setTargetAtTime(0, t, 0.03);
-    this.takes = [];
+    this.take?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    this.take = null;
   }
 
   thunder() {
