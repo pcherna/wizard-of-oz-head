@@ -91,19 +91,19 @@ export const OZ_SCULPT_DEFAULTS = {
 } satisfies Partial<Settings>;
 
 export const DEFAULT_SETTINGS: Settings = {
-  volume: 1.3,
-  sfxVolume: 1,
+  volume: 1.51,
+  sfxVolume: 0.25,
   fireBase: 0.35,
-  pitch: 0.87,
-  reverbWet: 0.48,
+  pitch: 0.85,
+  reverbWet: 0.65,
   gate: 0.008,
   sensitivity: 0.08,
-  headScale: 1.42,
-  headY: -0.22,
+  headScale: 1.57,
+  headY: -0.39,
   headVariant: 'oz',
-  headShine: 0.38,
-  headRim: 0.61,
-  backdrop: 0,
+  headShine: 0,
+  headRim: 0.5,
+  backdrop: 0.3,
   brightness: 1,
   ...OZ_SCULPT_DEFAULTS,
   // Chrome assigns device ids per browser profile, so these stay on the system default.
