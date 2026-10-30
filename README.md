@@ -49,7 +49,7 @@ Most presentation clickers send PageUp and PageDown. Their third button sends `b
 
 Many clickers also have a "start show" button that sends F5 and Esc in turn. Each press mutes or unmutes the mic, so it works as a mute button. Muting silences the voice and closes the mouth, and any reverb already playing dies out. While muted, the wizard's eyes dim to a faint glow, so you can see the state from behind the curtain. The phone remote and the setup panel show it too, and the remote can toggle it. The mic starts muted every time the app starts, so unmute when you're ready to speak.
 
-Unmuting takes effect after about a third of a second. Sound reaches the app late, by about 0.2 seconds with AirPods, so the wait keeps your last words before unmuting from leaking out. The eyes brighten when the mic actually opens, so wait for them before you speak. To change the wait, edit `unmuteHoldSec` in `src/config.ts`.
+Unmuting takes effect after a tenth of a second. Sound reaches the app late, by 10–20 ms with a wired mic, so the wait keeps your last words before unmuting from leaking out. The eyes brighten when the mic actually opens, so wait for them before you speak. AirPods add about 0.2 seconds of Bluetooth delay. If you use them, set `unmuteHoldSec` in `src/config.ts` to 0.35.
 
 The app stops F5 from reloading the page. In fullscreen it also locks the Esc key, so only holding Esc for about 2 seconds leaves fullscreen. Press `f` to go back. In show mode Chrome runs in kiosk mode, where Esc never leaves fullscreen.
 
@@ -81,7 +81,7 @@ The correction costs no frame rate. Any correction softens the picture a little,
 
 The server prints the remote URL at startup, and the setup panel shows it too. It looks like `http://<mac-name>.local:8787/remote.html`. The phone must be on the same Wi-Fi as the Mac. If the page says "offline", the Wi-Fi probably blocks device-to-device traffic. In that case, join the Mac to the phone's hotspot.
 
-The remote has buttons for fire, steam, lightning and the mic, and sliders for volume, fire level and overall brightness.
+The remote has buttons for fire, steam, lightning and the mic, and sliders for volume, effects volume, fire level and overall brightness.
 
 If audio fails during the show, a red message appears in the bottom-left corner. It clears itself after 10 seconds.
 
@@ -93,6 +93,7 @@ Press `s` to open it.
 - **Mic and Speakers:** pick the mic and the room speakers. Always pick the speakers explicitly. If you don't, macOS can move the output onto the AirPods when they become the input.
 - **Cue tones:** where the mute and unmute tones play. Pick the performer's AirPods, and only the performer hears them: two falling notes for muted, two rising notes for live. The voice and effects stay on the speakers. Off plays no tones. The unmute tone plays while the mic is still shut, so the mic can't pick it up.
 - **Test speakers:** plays a short beep through the chosen output. If one speaker stays silent while others work, open Audio MIDI Setup and check that device's volume and Mute box. macOS keeps a separate volume for each device, and the menu-bar slider only changes the current default.
+- **Effects volume:** turns down the fire, steam and thunder sounds and leaves the voice alone. Set the voice with Volume first, then lower the effects to taste. At 1 the effects play at full level.
 - **Pitch and Reverb:** shape the voice. Pitch 0.72 is about six semitones down.
 - **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch.
 - **Mouth sensitivity:** the voice level that opens the jaw fully. Watch the meter while you speak normally. Aim for about half.
@@ -108,9 +109,11 @@ Settings save in the browser. The show profile in `.chrome-show-profile` keeps i
 
 AirPods add about 150–250 ms of Bluetooth delay. You will hear your own voice boom back late, which can make you stumble over words. Noise cancellation helps. A wired or USB mic cuts the delay to about 10 ms. The mouth stays in sync either way, because it follows the speaker output and not your voice.
 
+The app cuts everything below 80 Hz from the mic, before the pitch shift and bass boost. This cut removes mains hum and rumble, which a wired mic picks up more than AirPods do. The gate silences mic noise between words. But noise under your voice still plays, and the reverb carries it for a moment after you stop. If you still hear a buzz while you speak, it comes in with the mic signal. Keep the mic cable away from power cables and the projector.
+
 ## Sound effects
 
-Each trigger plays a sound through the speakers: a whoosh with crackles for the fire, a two-vent hiss for the steam, and thunder for the lightning. Fire flares set off by a shout stay silent, so they don't cover the voice.
+Each trigger plays a sound through the speakers: a whoosh with crackles for the fire, a two-vent hiss for the steam, and thunder for the lightning. Fire flares set off by a shout stay silent, so they don't cover the voice. The Effects volume slider, in the setup panel and on the phone remote, turns all three down together.
 
 The app synthesizes all three sounds. To use a recording instead, save it as `public/sfx/fire.wav`, `steam.wav`, or `thunder.wav`.
 

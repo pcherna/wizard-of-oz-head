@@ -16,14 +16,18 @@ export class Sfx {
   private white: AudioBuffer;
   private brown: AudioBuffer;
   private bus: Record<SoundName, GainNode>;
+  /** The operator's effects volume, shared by all three sounds. */
+  private volume: GainNode;
 
   constructor(private ctx: BaseAudioContext, out: AudioNode) {
+    this.volume = new GainNode(ctx);
+    this.volume.connect(out);
     this.bus = {
       fire: new GainNode(ctx, { gain: LEVELS.fire }),
       steam: new GainNode(ctx, { gain: LEVELS.steam }),
       thunder: new GainNode(ctx, { gain: LEVELS.thunder }),
     };
-    for (const bus of Object.values(this.bus)) bus.connect(out);
+    for (const bus of Object.values(this.bus)) bus.connect(this.volume);
     this.white = whiteNoise(ctx, 3);
     this.brown = brownNoise(ctx, 8);
     for (const name of ['thunder', 'steam', 'fire'] as const) {
@@ -35,6 +39,10 @@ export class Sfx {
         })
         .catch(() => {});
     }
+  }
+
+  setVolume(level: number) {
+    this.volume.gain.setTargetAtTime(level, this.ctx.currentTime, 0.05);
   }
 
   thunder() {

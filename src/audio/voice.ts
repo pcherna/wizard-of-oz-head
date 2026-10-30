@@ -8,7 +8,7 @@ import { VOICE, type Settings } from '../config';
 export const SAMPLE_RATE = 48000;
 
 /**
- * Mic → gate + pitch shift → bass boost → dry + reverb → compressor → master → limiter → speakers.
+ * Mic → low cut → gate + pitch shift → bass boost → dry + reverb → compressor → master → limiter → speakers.
  * `analyser` taps the dry pitched signal, so the reverb tail never moves the mouth.
  * Other sounds (thunder) connect to `fxBus`, which skips the voice compressor.
  */
@@ -36,7 +36,8 @@ export class Voice {
     this.fxBus = new GainNode(ctx);
     this.input = new GainNode(ctx);
 
-    this.input.connect(this.shifter);
+    const lowCut = () => new BiquadFilterNode(ctx, { type: 'highpass', frequency: VOICE.lowCutHz, Q: Math.SQRT1_2 });
+    this.input.connect(lowCut()).connect(lowCut()).connect(this.shifter);
     this.shifter.connect(this.analyser);
     this.shifter.connect(shelf);
     shelf.connect(this.dry).connect(comp);

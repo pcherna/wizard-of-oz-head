@@ -88,6 +88,7 @@ function trigger(effect: EffectName) {
 
 store.subscribe((changed) => {
   voice?.apply(changed);
+  if (changed.sfxVolume !== undefined) sfx?.setVolume(changed.sfxVolume);
   if (changed.headVariant) loadHead(changed.headVariant);
   if (changed.headShine !== undefined) head?.setShine(changed.headShine);
   if (changed.headRim !== undefined) head?.setRimGlow(changed.headRim);
@@ -218,6 +219,7 @@ async function start(byClick: boolean) {
     voice = next;
     voice.setMuted(micMuted);
     sfx = new Sfx(voice.ctx, voice.fxBus);
+    sfx.setVolume(store.value.sfxVolume);
     // Inside the start click, so the cue context is allowed to play.
     cue.setOutput(store.value.cueOutputId).catch(showError);
     // Chrome fires this when the output device fails or disappears.

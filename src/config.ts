@@ -25,6 +25,8 @@ export const MIC_TOGGLE_KEYS = ['F5', 'Escape'];
 export interface Settings {
   /** Master output gain, 0..2. */
   volume: number;
+  /** Fire, steam and thunder level, 0..1, on top of the master volume. The voice ignores it. */
+  sfxVolume: number;
   /** Resting fire height/brightness, 0..2. */
   fireBase: number;
   /** Voice pitch ratio, 0.5..1. Lower is deeper. */
@@ -90,6 +92,7 @@ export const OZ_SCULPT_DEFAULTS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   volume: 1.3,
+  sfxVolume: 1,
   fireBase: 0.35,
   pitch: 0.87,
   reverbWet: 0.48,
@@ -112,17 +115,23 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 /** Settings the phone remote may change. Device ids stay on the display Mac. */
-export const REMOTE_SETTING_KEYS = ['volume', 'fireBase', 'brightness'] as const;
+export const REMOTE_SETTING_KEYS = ['volume', 'sfxVolume', 'fireBase', 'brightness'] as const;
 
 export const VOICE = {
   /**
    * After unmuting, keep the mic shut this long. Audio spoken while muted is still in transit
-   * (Bluetooth, macOS and Chrome buffers, about 150–250 ms with AirPods) and would leak out.
+   * (macOS and Chrome buffers, about 10–20 ms with a wired mic) and would leak out.
+   * AirPods add Bluetooth delay (about 150–250 ms) and need 0.35.
    */
-  unmuteHoldSec: 0.35,
+  unmuteHoldSec: 0.1,
   reverbSeconds: 3.2,
   bassBoostDb: 6,
   bassBoostHz: 220,
+  /**
+   * Cuts mains hum (60 Hz) and rumble before the bass boost amplifies them. The gate hides them in
+   * silence, but they buzz under the voice and its reverb. Two filters make a steep 24 dB/octave cut.
+   */
+  lowCutHz: 80,
 };
 
 export const LIPSYNC = {
