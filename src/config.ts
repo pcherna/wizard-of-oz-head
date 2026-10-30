@@ -3,7 +3,7 @@
 
 export const PORT = 8787;
 
-export type EffectName = 'fire' | 'steam' | 'lightning';
+export type EffectName = 'fire' | 'steam' | 'lightning' | 'trick';
 export type HeadVariant = 'oz' | 'scan' | 'procedural' | 'labrador';
 
 /** Presentation clickers send these keys. The setup panel shows the last key pressed. */
@@ -12,12 +12,16 @@ export const KEY_MAP: Record<string, EffectName> = {
   ArrowRight: 'fire',
   PageUp: 'steam',
   ArrowLeft: 'steam',
-  b: 'lightning',
-  '.': 'lightning',
+  b: 'trick',
+  '.': 'trick',
   '1': 'fire',
   '2': 'steam',
-  '3': 'lightning',
+  '3': 'trick',
 };
+
+/** Clickers have three buttons, so lightning hides behind quick steam taps: this many, each this soon after the last. */
+export const STEAM_TAPS_FOR_LIGHTNING = 4;
+export const STEAM_TAP_GAP_SEC = 0.6;
 
 /** Keys that mute or unmute the mic. A clicker's "start show" button sends F5 and Esc in turn. */
 export const MIC_TOGGLE_KEYS = ['F5', 'Escape'];

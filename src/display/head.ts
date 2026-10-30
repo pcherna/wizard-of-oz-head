@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { HeadVariant } from '../config';
 import type { MouthState } from '../audio/lipsync';
 import { FACE_MID_X, OzSculptor, mapFeature, type SculptParams } from './oz-sculpt';
+import { restPose, type Trick } from './tricks';
+import type { FlingSource } from './droplets';
 
 /** Landmarks in the mesh's own coordinates. Every model faces +z with +y up. */
 interface Rig {
@@ -31,6 +33,8 @@ interface Rig {
   hinge: THREE.Vector3;
   eyeL: THREE.Vector3;
   eyeR: THREE.Vector3;
+  /** Height and depth of the front of the mouth, where a tongue comes out. */
+  tongueLip: THREE.Vector2;
 }
 
 const SCAN_RIG: Rig = {
@@ -51,6 +55,8 @@ const SCAN_RIG: Rig = {
   // The eyeballs bulge at x -0.71 and 0.52, about 0.6 either side of the midline.
   eyeL: new THREE.Vector3(FACE_MID_X - 0.62, 1.78, 1.75),
   eyeR: new THREE.Vector3(FACE_MID_X + 0.62, 1.78, 1.75),
+  // The scans have no separate tongue.
+  tongueLip: new THREE.Vector2(0.45, 2.24),
 };
 
 /** The sculpt sinks the eyes, and setSculpt() moves the chin landmark with the chin drop. */
@@ -93,6 +99,8 @@ const LABRADOR_RIG: Rig = {
   eyeRadius: 0.07,
   eyeL: new THREE.Vector3(-0.27, 4.85, 4.05),
   eyeR: new THREE.Vector3(0.27, 4.85, 4.05),
+  // The gap between the lower lip (y 4.03) and upper lip (y 4.15), just in front of the lower front teeth.
+  tongueLip: new THREE.Vector2(4.05, 4.45),
   // Unused without a seam mouth, but kept consistent with the measurements.
   midX: 0,
   seamY: 4.1,
@@ -118,7 +126,10 @@ uniform vec3 uHinge;
 uniform float uJawMax;
 uniform float uJawRest;
 uniform float uSeamMouth;
+uniform vec4 uTongue;
+uniform vec2 uTongueLip;
 attribute float aJaw;
+attribute float aTongue;
 varying vec3 vNormalW;
 varying vec3 vPosW;
 varying vec3 vLocal;
@@ -140,9 +151,32 @@ float jawWeight(vec3 p) {
   return below * front * throat;
 }
 
+// Slides the tongue out over the lower teeth, hangs it past the lip, and curls the tip up.
+// uTongue is (slide, curl, side, droop). w runs from 0 at the root to 1 at the tip.
+void moveTongue(inout vec3 p, inout vec3 n, float w) {
+  float slide = uTongue.x;
+  p.z += slide * w * 0.45;
+  // Rise over the lower front teeth on the way out.
+  p.y += slide * w * 0.1;
+  p.x += uTongue.z * w * w;
+  float past = max(p.z - uTongueLip.y, 0.0);
+  p.y -= uTongue.w * past * past * 1.2;
+  // Bend the part in front of a pivot just ahead of the upper lip, so a curl clears it.
+  float pivotY = uTongueLip.x + slide * 0.1;
+  float pivotZ = uTongueLip.y + 0.3;
+  float bend = uTongue.y * smoothstep(pivotZ - 0.05, pivotZ + 0.15, p.z);
+  float c = cos(bend);
+  float s = sin(bend);
+  vec2 q = vec2(p.z - pivotZ, p.y - pivotY);
+  p.z = pivotZ + q.x * c - q.y * s;
+  p.y = pivotY + q.x * s + q.y * c;
+  n = vec3(n.x, n.z * s + n.y * c, n.z * c - n.y * s);
+}
+
 void main() {
   vec3 p = position;
   vec3 n = normal;
+  if (aTongue > 0.0) moveTongue(p, n, aTongue);
   float m = mouthMask(position) * uSeamMouth;
   float nearSeam = exp(-pow((position.y - uSeamY) / 0.3, 2.0));
 
@@ -188,6 +222,7 @@ uniform float uEyeRadius;
 uniform float uChinY;
 uniform float uRimGlow;
 uniform float uShine;
+uniform float uGhost;
 uniform float uJaw;
 uniform float uSeamY;
 uniform float uMouthHalfW;
@@ -195,6 +230,7 @@ uniform float uMidX;
 uniform vec3 uEyeL;
 uniform vec3 uEyeR;
 uniform float uEyeOpen;
+uniform vec2 uWink;
 uniform float uEyeScale;
 uniform vec2 uGaze;
 uniform sampler2D uMap;
@@ -206,12 +242,12 @@ varying vec2 vUv;
 
 // A painted eye: an almond of glowing white, a bright iris and a dark pupil, drawn over the
 // scan's closed lids. d is the offset from the eye center. Returns color and coverage.
-vec4 paintEye(vec3 d) {
+vec4 paintEye(vec3 d, float open) {
   vec2 q = d.xy / uEyeScale;
   float onFace = 1.0 - smoothstep(0.3, 0.5, abs(d.z));
   // The almond's height closes with the lids.
-  float almond = length(vec2(q.x / 0.3, q.y / (0.15 * max(uEyeOpen, 0.001))));
-  float cover = (1.0 - smoothstep(0.8, 1.0, almond)) * onFace * step(0.02, uEyeOpen);
+  float almond = length(vec2(q.x / 0.3, q.y / (0.15 * max(open, 0.001))));
+  float cover = (1.0 - smoothstep(0.8, 1.0, almond)) * onFace * step(0.02, open);
   float r = length(q - uGaze) / 0.13;
   // Whites stay dimmer than the iris, so bloom doesn't wash the iris out.
   vec3 c = vec3(0.42, 0.58, 0.36);
@@ -251,9 +287,14 @@ void main() {
   vec3 H = normalize(lKey + V);
   col += vec3(0.6, 1.0, 0.6) * pow(max(dot(N, H), 0.0), 40.0) * 0.25 * uShine;
 
+  // Ghost: a pale shell, brightest at the edges, with the eyes still glowing. The material adds it over the scene behind.
+  // The face stays dim, under the bloom threshold, so only the outline glows and the backdrop shows through.
+  vec3 ghost = vec3(0.8, 0.92, 1.0) * (0.02 + 0.03 * key + 0.3 * fres);
+  col = mix(col, ghost, uGhost);
+
   if (uPaintEyes > 0.5) {
-    vec4 eyeL = paintEye(vLocal - uEyeL);
-    vec4 eyeR = paintEye(vLocal - uEyeR);
+    vec4 eyeL = paintEye(vLocal - uEyeL, uEyeOpen * (1.0 - uWink.x));
+    vec4 eyeR = paintEye(vLocal - uEyeR, uEyeOpen * (1.0 - uWink.y));
     col = mix(col, eyeL.rgb * uEyeGlow, eyeL.a);
     col = mix(col, eyeR.rgb * uEyeGlow, eyeR.a);
   } else {
@@ -261,7 +302,7 @@ void main() {
     vec3 dl = vLocal - uEyeL;
     vec3 dr = vLocal - uEyeR;
     float r2 = uEyeRadius * uEyeRadius;
-    float glow = exp(-dot(dl, dl) / r2) + exp(-dot(dr, dr) / r2);
+    float glow = exp(-dot(dl, dl) / r2) * (1.0 - uWink.x) + exp(-dot(dr, dr) / r2) * (1.0 - uWink.y);
     col += vec3(0.75, 1.0, 0.45) * glow * 0.7 * uEyeGlow * uEyeOpen;
   }
 
@@ -277,7 +318,7 @@ void main() {
 }
 `;
 
-export class Head {
+export class Head implements FlingSource {
   /** Turns around the neck pivot. Position it in world space. */
   readonly group = new THREE.Group();
   private mesh: THREE.Mesh;
@@ -293,7 +334,21 @@ export class Head {
   private eyeDim = 1;
   /** Holds the head still at this yaw (radians), for comparing against references. */
   pinnedYaw: number | null = null;
+  /** Holds any trick at this many seconds in, for checking its poses. */
+  pinnedTrickAt: number | null = null;
   private sculptor: OzSculptor | null = null;
+  private trick: Trick | null = null;
+  private trickStart = 0;
+  private trickDir = 1;
+  /** Only the Labrador has a separate tongue, so only it can do the tongue tricks. */
+  readonly hasTongue: boolean;
+  spray = 0;
+  /** Vertices far from the roll axis (ears, cheeks, crown), where a shake flings water from. */
+  private flingVerts: number[];
+  private prevWorld = new THREE.Matrix4();
+  private frameDt = 1 / 60;
+  /** Draws depth only, before the ghost, so the ghost shows just its front surface. */
+  private depthMesh: THREE.Mesh;
 
   private constructor(
     geometry: THREE.BufferGeometry,
@@ -301,6 +356,7 @@ export class Head {
     map: THREE.Texture | null,
     opts: { alphaCut?: number; doubleSided?: boolean } = {},
   ) {
+    this.hasTongue = geometry.hasAttribute('aTongue');
     this.uniforms = {
       uJaw: { value: 0 },
       uWidth: { value: 0 },
@@ -327,9 +383,13 @@ export class Head {
       uFlash: { value: 0 },
       uEyeGlow: { value: 1 },
       uEyeOpen: { value: 1 },
+      uWink: { value: new THREE.Vector2() },
+      uTongue: { value: new THREE.Vector4() },
+      uTongueLip: { value: rig.tongueLip },
       uEyeScale: { value: 1 },
       uGaze: { value: new THREE.Vector2() },
       uShine: { value: 1 },
+      uGhost: { value: 0 },
       uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
@@ -343,6 +403,18 @@ export class Head {
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.position.copy(rig.pivot).multiplyScalar(-1);
     this.group.add(this.mesh);
+    // Same shader and uniforms, so it deforms exactly like the head.
+    const depthOnly = material.clone();
+    depthOnly.uniforms = this.uniforms;
+    depthOnly.colorWrite = false;
+    this.depthMesh = new THREE.Mesh(geometry, depthOnly);
+    this.depthMesh.position.copy(this.mesh.position);
+    this.depthMesh.renderOrder = -1;
+    this.depthMesh.visible = false;
+    this.group.add(this.depthMesh);
+    this.flingVerts = outerVertices(geometry, rig);
+    // Nod inside the turn, so a head turned to the side still tips its own nose up or down.
+    this.group.rotation.order = 'YXZ';
     this.setPlacement(1, 0);
   }
 
@@ -377,6 +449,8 @@ export class Head {
     const { geometry, material } = source as THREE.Mesh;
     const std = material as THREE.MeshStandardMaterial;
     geometry.setAttribute('aJaw', labradorJawWeights(geometry, LABRADOR_RIG.hinge));
+    const tongue = labradorTongueWeights(geometry);
+    if (tongue) geometry.setAttribute('aTongue', tongue);
     return new Head(geometry, LABRADOR_RIG, std.map, { alphaCut: std.alphaTest, doubleSided: std.side === THREE.DoubleSide });
   }
 
@@ -411,11 +485,39 @@ export class Head {
     this.placeY = y;
   }
 
+  /** Starts a trick at time t, replacing any trick still running. A later t holds the head still until then. */
+  perform(trick: Trick, t: number) {
+    this.trick = trick;
+    this.trickStart = t;
+    this.trickDir = Math.random() < 0.5 ? -1 : 1;
+  }
+
+  /** A random point on the outer head and its velocity, in world space, for a flung drop. */
+  flingPoint(pos: THREE.Vector3, vel: THREE.Vector3) {
+    const i = this.flingVerts[Math.floor(Math.random() * this.flingVerts.length)];
+    const local = new THREE.Vector3().fromBufferAttribute(this.mesh.geometry.attributes.position, i);
+    pos.copy(local).applyMatrix4(this.mesh.matrixWorld);
+    vel.copy(local).applyMatrix4(this.prevWorld);
+    vel.subVectors(pos, vel).divideScalar(this.frameDt);
+  }
+
   /** micLive false dims the eyes, so the performer can see the mute state. */
   update(t: number, dt: number, mouth: MouthState, fire: number, flash: number, micLive = true) {
     const u = this.uniforms;
+    this.prevWorld.copy(this.mesh.matrixWorld);
+    this.frameDt = Math.max(dt, 1e-3);
+    const pose = restPose();
+    if (this.trick) {
+      const at = this.pinnedTrickAt ?? t - this.trickStart;
+      if (at < this.trick.seconds) this.trick.pose(at, pose, this.trickDir);
+      else this.trick = null;
+    }
     u.uTime.value = t;
-    u.uJaw.value = mouth.jaw;
+    u.uJaw.value = mouth.jaw + (pose.jaw - mouth.jaw) * pose.jawMix;
+    (u.uTongue.value as THREE.Vector4).set(pose.tongueOut, pose.tongueCurl, pose.tongueSide, pose.tongueDroop);
+    (u.uWink.value as THREE.Vector2).set(pose.winkL, pose.winkR);
+    this.spray = pose.spray;
+    this.setGhost(pose.ghost);
     u.uWidth.value = mouth.width;
     u.uFire.value = fire;
     u.uFlash.value = flash;
@@ -426,9 +528,9 @@ export class Head {
       this.blinkAt = t + 3 + Math.random() * 3;
     }
     this.blink = Math.max(0, this.blink - dt / 0.15);
-    u.uEyeOpen.value = 1 - Math.sin(this.blink * Math.PI);
+    u.uEyeOpen.value = (1 - Math.sin(this.blink * Math.PI)) * pose.eyeOpen;
     this.eyeDim += ((micLive ? 1 : MUTED_EYE_GLOW) - this.eyeDim) * (1 - Math.exp(-dt / 0.12));
-    u.uEyeGlow.value = (1 + Math.min(mouth.level, 1.5) * 0.5) * this.eyeDim;
+    u.uEyeGlow.value = (1 + Math.min(mouth.level, 1.5) * 0.5) * this.eyeDim * pose.eyeGlow;
 
     // The pupils glance somewhere new every 0.8–3 s, with a quick saccade.
     if (t > this.glanceAt) {
@@ -436,7 +538,7 @@ export class Head {
       this.glanceAt = t + 0.8 + Math.random() * 2.2;
     }
     this.gaze.lerp(this.gazeTarget, 1 - Math.exp(-dt / 0.04));
-    (u.uGaze.value as THREE.Vector2).copy(this.gaze);
+    (u.uGaze.value as THREE.Vector2).set(this.gaze.x + pose.gazeX, this.gaze.y);
 
     // Syllable onsets kick a damped spring, so speech reads as emphatic nods.
     this.nodVel += mouth.onset * 0.9;
@@ -446,18 +548,32 @@ export class Head {
     const energy = 1 + Math.min(mouth.level, 1.5) * 0.4;
     const g = this.group;
     if (this.pinnedYaw !== null) {
-      g.rotation.set(0, this.pinnedYaw, 0);
+      g.rotation.set(pose.pitch, this.pinnedYaw + pose.yaw, pose.roll);
     } else {
-      g.rotation.y = (0.28 * noise1(t * 0.11) + 0.07 * noise1(t * 0.43 + 10)) * energy;
-      g.rotation.x = 0.1 * noise1(t * 0.17 + 20) + this.nod - mouth.level * 0.03;
-      g.rotation.z = 0.04 * noise1(t * 0.13 + 30);
+      const idle = pose.idle;
+      g.rotation.y = (0.28 * noise1(t * 0.11) + 0.07 * noise1(t * 0.43 + 10)) * energy * idle + pose.yaw;
+      g.rotation.x = 0.1 * noise1(t * 0.17 + 20) * idle + this.nod - mouth.level * 0.03 + pose.pitch;
+      g.rotation.z = 0.04 * noise1(t * 0.13 + 30) * idle + pose.roll;
     }
-    g.position.y = -0.02 + this.placeY + 0.025 * Math.sin(t * 0.9);
+    g.position.y = -0.02 + this.placeY + 0.025 * Math.sin(t * 0.9) + pose.rise;
+    // Now, not at render, so flingPoint() sees this frame's pose.
+    g.updateMatrixWorld(true);
+  }
+
+  /** A ghost adds its light over the scene behind it, so the fire and backdrop show through. */
+  private setGhost(amount: number) {
+    this.uniforms.uGhost.value = amount;
+    const ghostly = amount > 0.001;
+    const material = this.mesh.material as THREE.ShaderMaterial;
+    material.blending = ghostly ? THREE.AdditiveBlending : THREE.NormalBlending;
+    material.transparent = ghostly;
+    this.depthMesh.visible = ghostly;
   }
 
   dispose() {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
+    (this.depthMesh.material as THREE.Material).dispose();
     (this.uniforms.uMap.value as THREE.Texture | null)?.dispose();
   }
 }
@@ -492,6 +608,68 @@ function labradorJawWeights(geometry: THREE.BufferGeometry, hinge: THREE.Vector3
     const throat = smoothstep(3.55, 3.75, y);
     weights[i] = below * front * muzzle * throat;
   }
+  return new THREE.BufferAttribute(weights, 1);
+}
+
+/** Indices of visible vertices in the outer 20% by distance from the roll axis through the neck pivot. */
+function outerVertices(geometry: THREE.BufferGeometry, rig: Rig): number[] {
+  const pos = geometry.attributes.position;
+  const p = new THREE.Vector3();
+  const normal = new THREE.Vector3(rig.cut.x, rig.cut.y, rig.cut.z);
+  const kept: [number, number][] = [];
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i);
+    // Skip what the neck fade hides.
+    if (p.dot(normal) - rig.cut.w < 0.25) continue;
+    kept.push([i, Math.hypot(p.x - rig.pivot.x, p.y - rig.pivot.y)]);
+  }
+  kept.sort((a, b) => b[1] - a[1]);
+  return kept.slice(0, Math.max(1, Math.floor(kept.length * 0.2))).map(([i]) => i);
+}
+
+/**
+ * The Lab's tongue is its own part of the mesh, sitting between the lower tooth rows. Returns
+ * 0 at its root to 1 at its tip, 0 off the tongue, or null if no such part turns up.
+ */
+function labradorTongueWeights(geometry: THREE.BufferGeometry): THREE.BufferAttribute | null {
+  const pos = geometry.attributes.position;
+  const index = geometry.index;
+  if (!index) return null;
+  // Group vertices into connected parts. Welding by position first joins faces split at UV seams.
+  const parent = Int32Array.from({ length: pos.count }, (_, i) => i);
+  const find = (a: number) => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
+    return a;
+  };
+  const union = (a: number, b: number) => {
+    parent[find(a)] = find(b);
+  };
+  const welded = new Map<string, number>();
+  for (let i = 0; i < pos.count; i++) {
+    const key = `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+    const other = welded.get(key);
+    if (other === undefined) welded.set(key, i);
+    else union(i, other);
+  }
+  for (let t = 0; t < index.count; t += 3) {
+    union(index.getX(t), index.getX(t + 1));
+    union(index.getX(t), index.getX(t + 2));
+  }
+  // The tongue is the largest part that lies wholly inside the mouth. Teeth fit too, but they're smaller.
+  const inMouth = (i: number) => Math.abs(pos.getX(i)) < 0.35 && pos.getY(i) > 3.8 && pos.getY(i) < 4.35 && pos.getZ(i) > 3.7 && pos.getZ(i) < 4.45;
+  const size = new Map<number, number>();
+  const outside = new Set<number>();
+  for (let i = 0; i < pos.count; i++) {
+    const root = find(i);
+    size.set(root, (size.get(root) ?? 0) + 1);
+    if (!inMouth(i)) outside.add(root);
+  }
+  let tongue = -1;
+  for (const [root, n] of size) if (!outside.has(root) && n > (size.get(tongue) ?? 0)) tongue = root;
+  if (tongue < 0) return null;
+  const weights = new Float32Array(pos.count);
+  // The front half slides out whole and keeps its shape. The back half stretches.
+  for (let i = 0; i < pos.count; i++) if (find(i) === tongue) weights[i] = smoothstep(3.85, 4.15, pos.getZ(i));
   return new THREE.BufferAttribute(weights, 1);
 }
 

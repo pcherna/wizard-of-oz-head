@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, type EffectName, type Settings } from '../config';
+import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, STEAM_TAPS_FOR_LIGHTNING, STEAM_TAP_GAP_SEC, type EffectName, type Settings } from '../config';
 import { SettingsStore } from '../settings';
 import { RelaySocket } from '../control/socket';
 import { Voice } from '../audio/voice';
@@ -15,6 +15,8 @@ import { Backdrop } from './backdrop';
 import { SteamPipes } from './pipes';
 import { CueTones } from '../audio/cue';
 import { Projection } from './projection';
+import { TRICKS } from './tricks';
+import { Droplets } from './droplets';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -22,6 +24,8 @@ const demo = params.has('demo');
 const pinnedYaw = params.has('yaw') ? Number(params.get('yaw')) : null;
 /** `?jaw=0.6` holds the mouth open that far (0 shut, 1 wide), for checking the jaw split. */
 const pinnedJaw = params.has('jaw') ? Number(params.get('jaw')) : null;
+/** `?trick=lick&at=0.8` holds that trick at 0.8 s in, for checking its pose. */
+const pinnedTrick = TRICKS.find((tr) => tr.name === params.get('trick')) ?? null;
 
 const store = new SettingsStore();
 const stage = createStage(document.querySelector<HTMLCanvasElement>('#stage')!);
@@ -34,6 +38,8 @@ const pipes = new SteamPipes();
 pipes.setBrightness(store.value.backdrop);
 stage.scene.add(pipes.group);
 stage.scene.add(fire.group, steam.composite);
+const droplets = new Droplets();
+stage.scene.add(droplets.points);
 
 let voice: Voice | null = null;
 let sfx: Sfx | null = null;
@@ -62,6 +68,10 @@ function loadHead(variant: Settings['headVariant']) {
     head.pinnedYaw = pinnedYaw;
     head.setShine(store.value.headShine);
     head.setRimGlow(store.value.headRim);
+    if (pinnedTrick) {
+      head.pinnedTrickAt = Number(params.get('at') ?? 0.5);
+      head.perform(pinnedTrick, clock);
+    }
     stage.scene.add(head.group);
   }, showError);
 }
@@ -71,17 +81,45 @@ loadHead(store.value.headVariant);
 if (import.meta.env.DEV) Object.assign(window, { wizard: { get head() { return head; } } });
 
 let clock = 0;
+let steamTaps = 0;
+let lastSteamTap = -Infinity;
+let nextTrick = 0;
+
 /** Clicker and remote triggers. Shout-driven flares skip this, so they stay silent under the voice. */
 function trigger(effect: EffectName) {
   if (effect === 'fire') {
     fire.flareUp();
     sfx?.fire();
   } else if (effect === 'steam') {
+    steamTaps = clock - lastSteamTap <= STEAM_TAP_GAP_SEC ? steamTaps + 1 : 1;
+    lastSteamTap = clock;
+    // The last quick tap strikes lightning instead. The earlier taps' steam is still blowing.
+    if (steamTaps >= STEAM_TAPS_FOR_LIGHTNING) {
+      steamTaps = 0;
+      lightning.strike(clock);
+      return;
+    }
     steam.burst();
     sfx?.steam(STEAM_BURST_SEC);
-  } else {
+  } else if (effect === 'lightning') {
     lightning.strike(clock);
+  } else {
+    playTrick();
   }
+}
+
+/** Each press plays the next trick in TRICKS, skipping tongue tricks on heads without a tongue. */
+function playTrick() {
+  if (!head) return;
+  const tongue = head.hasTongue;
+  const tricks = TRICKS.filter((tr) => tongue || !tr.tongue);
+  const trick = tricks[nextTrick++ % tricks.length];
+  // A clip such as "Squirrel!" plays first, and the head moves when it ends.
+  const lead = sfx?.trick(trick.name) ?? 0;
+  head.perform(trick, clock + lead);
+  // Silent, so the hiss doesn't cover the trick's own sound. It doesn't count toward lightning taps.
+  if (trick.steamAt !== undefined) setTimeout(() => steam.burst(), (lead + trick.steamAt) * 1000);
+  if (trick.flareAt !== undefined) setTimeout(() => fire.flareUp(), (lead + trick.flareAt) * 1000);
 }
 
 // --- Settings ---------------------------------------------------------------
@@ -281,6 +319,7 @@ function updatePixelScale() {
   const scale = (innerHeight * stage.renderer.getPixelRatio()) / (2 * Math.tan((camera.fov * Math.PI) / 360));
   fire.setPixelScale(scale);
   steam.setPixelScale(scale);
+  droplets.setPixelScale(scale);
   const buffer = stage.renderer.getDrawingBufferSize(new THREE.Vector2());
   steam.setSize(buffer.x, buffer.y);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
@@ -315,6 +354,7 @@ function frame(now: number) {
   pipes.update(clock, fire.intensity);
   const micLive = !micMuted && clock >= micOpensAt;
   head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
+  droplets.update(dt, head);
   steam.renderDensity(stage.renderer, stage.camera);
   stage.render();
 

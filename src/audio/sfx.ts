@@ -1,11 +1,18 @@
-type SoundName = 'thunder' | 'steam' | 'fire';
+import { TRICKS, type TrickName } from '../display/tricks';
+import { TrickSounds } from './trick-sounds';
+
+type SoundName = 'thunder' | 'steam' | 'fire' | 'trick';
 
 /** Mix level of each sound relative to the voice. Applies to synthesized sounds and .wav files alike. */
 const LEVELS: Record<SoundName, number> = {
   fire: 0.3,
   steam: 0.3,
   thunder: 0.7,
+  trick: 0.5,
 };
+
+/** A spoken clip, such as "Squirrel!", plays this much louder than the synthesized trick sounds, so it cuts through. */
+const CLIP_BOOST = 2;
 
 /**
  * Effect sounds on the speaker bus. Each plays public/sfx/<name>.wav if that file exists,
@@ -13,10 +20,13 @@ const LEVELS: Record<SoundName, number> = {
  */
 export class Sfx {
   private samples: Partial<Record<SoundName, AudioBuffer>> = {};
+  /** Clips that play before a trick moves, such as public/sfx/squirrel.mp3. */
+  private clips: Partial<Record<TrickName, AudioBuffer>> = {};
   private white: AudioBuffer;
   private brown: AudioBuffer;
   private bus: Record<SoundName, GainNode>;
-  /** The operator's effects volume, shared by all three sounds. */
+  private tricks: TrickSounds;
+  /** The operator's effects volume, shared by all the sounds. */
   private volume: GainNode;
 
   constructor(private ctx: BaseAudioContext, out: AudioNode) {
@@ -26,23 +36,44 @@ export class Sfx {
       fire: new GainNode(ctx, { gain: LEVELS.fire }),
       steam: new GainNode(ctx, { gain: LEVELS.steam }),
       thunder: new GainNode(ctx, { gain: LEVELS.thunder }),
+      trick: new GainNode(ctx, { gain: LEVELS.trick }),
     };
     for (const bus of Object.values(this.bus)) bus.connect(this.volume);
     this.white = whiteNoise(ctx, 3);
     this.brown = brownNoise(ctx, 8);
+    this.tricks = new TrickSounds(ctx, this.bus.trick, this.white);
     for (const name of ['thunder', 'steam', 'fire'] as const) {
-      fetch(`/sfx/${name}.wav`)
-        .then((r) => (r.ok && r.headers.get('content-type')?.startsWith('audio') ? r.arrayBuffer() : null))
-        .then((data) => (data ? ctx.decodeAudioData(data) : null))
+      loadSample(ctx, `/sfx/${name}.wav`).then((buf) => {
+        if (buf) this.samples[name] = buf;
+      });
+    }
+    for (const trick of TRICKS.filter((tr) => tr.clip)) {
+      loadSample(ctx, `/sfx/${trick.name}.mp3`)
+        .then((buf) => buf ?? loadSample(ctx, `/sfx/${trick.name}.wav`))
         .then((buf) => {
-          if (buf) this.samples[name] = buf;
-        })
-        .catch(() => {});
+          if (buf) this.clips[trick.name] = buf;
+        });
     }
   }
 
   setVolume(level: number) {
     this.volume.gain.setTargetAtTime(level, this.ctx.currentTime, 0.05);
+  }
+
+  /**
+   * The sound for a dog trick, timed to its poses. Returns how long the trick's clip plays
+   * before the head should move, or 0 without a clip.
+   */
+  trick(name: TrickName): number {
+    const clip = this.clips[name];
+    if (!clip) {
+      this.tricks.play(name);
+      return 0;
+    }
+    const src = new AudioBufferSourceNode(this.ctx, { buffer: clip });
+    src.connect(new GainNode(this.ctx, { gain: CLIP_BOOST })).connect(this.bus.trick);
+    src.start();
+    return clip.duration;
   }
 
   thunder() {
@@ -149,6 +180,14 @@ export class Sfx {
     src.start(t);
     src.stop(t + dur + 0.1);
   }
+}
+
+/** A decoded sound file, or null when it is missing or not audio. */
+function loadSample(ctx: BaseAudioContext, url: string): Promise<AudioBuffer | null> {
+  return fetch(url)
+    .then((r) => (r.ok && r.headers.get('content-type')?.startsWith('audio') ? r.arrayBuffer() : null))
+    .then((data) => (data ? ctx.decodeAudioData(data) : null))
+    .catch(() => null);
 }
 
 function whiteNoise(ctx: BaseAudioContext, seconds: number): AudioBuffer {

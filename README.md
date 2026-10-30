@@ -36,8 +36,8 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | Key | Action |
 | --- | --- |
 | `PageDown`, `Right arrow`, `1` | Fire flare |
-| `PageUp`, `Left arrow`, `2` | Steam burst |
-| `b`, `.`, `3` | Lightning and thunder |
+| `PageUp`, `Left arrow`, `2` | Steam burst. Four quick taps strike lightning |
+| `b`, `.`, `3` | Next dog trick |
 | `F5`, `Esc` | Mute or unmute the mic |
 | `s` | Setup panel |
 | `f` | Back to fullscreen |
@@ -54,6 +54,32 @@ Unmuting takes effect after a tenth of a second. Sound reaches the app late, by 
 The app stops F5 from reloading the page. In fullscreen it also locks the Esc key, so only holding Esc for about 2 seconds leaves fullscreen. Press `f` to go back. In show mode Chrome runs in kiosk mode, where Esc never leaves fullscreen.
 
 A loud shout also flares the fire, at most once every 2 seconds.
+
+A clicker has only three buttons, so lightning hides behind the steam button. Tap steam four times, with less than 0.6 seconds between taps. The first three taps blow steam, and the fourth strikes lightning with thunder. To change the count or the gap, edit `STEAM_TAPS_FOR_LIGHTNING` and `STEAM_TAP_GAP_SEC` in `src/config.ts`.
+
+## Dog tricks
+
+Each press of the trick button plays the next trick in this order, then starts over:
+
+1. Blep: sticks its tongue out and waggles its head, with a raspberry.
+2. Shake: a wet-dog shake that flings water drops off its ears and head, with flapping ears and a jingling collar tag.
+3. Lick: licks its nose with one swipe across and back, with a slurp.
+4. Tilt: the confused head tilt, to a random side, with a questioning whine.
+5. Sneeze: rears back twice, then sneezes "choo!" so hard the steam vents blast.
+6. Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
+7. Pant: pants happily with its tongue hanging out.
+8. Squirrel: snaps its head to the side and stares. It can play a clip first, as described below.
+9. Wink: both eyes flare bright, then one goes dark for a moment, with a sparkle.
+10. Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
+11. Spin: turns its head all the way around, like a possessed doll.
+
+A trick takes 1.3 to 3.6 seconds. Pressing again during a trick starts the next one at once. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
+
+Only the Labrador has a tongue, so the other heads skip blep, lick and pant. The model has no back to its skull, so the inside of the face flashes past during the spin. The spin is fast, so the gap shows for only about a sixth of a second.
+
+To check a pose, add `?trick=lick&at=0.8` to the URL. It holds that trick at 0.8 seconds in.
+
+The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from the movie *Up*. Save the clip as `public/sfx/squirrel.mp3` or `public/sfx/squirrel.wav`. The dog plays the clip, then turns its head when the clip ends. Trim any silence from the end of the clip, or the turn comes late. Git ignores this file, because the repo is public and the clip is movie audio. Without the file, the squirrel trick plays its own short sound and turns at once.
 
 ## Upside-down projector
 
@@ -81,7 +107,7 @@ The correction costs no frame rate. Any correction softens the picture a little,
 
 The server prints the remote URL at startup, and the setup panel shows it too. It looks like `http://<mac-name>.local:8787/remote.html`. The phone must be on the same Wi-Fi as the Mac. If the page says "offline", the Wi-Fi probably blocks device-to-device traffic. In that case, join the Mac to the phone's hotspot.
 
-The remote has buttons for fire, steam, lightning and the mic, and sliders for volume, effects volume, fire level and overall brightness.
+The remote has buttons for fire, steam, lightning, dog tricks and the mic, and sliders for volume, effects volume, fire level and overall brightness.
 
 If audio fails during the show, a red message appears in the bottom-left corner. It clears itself after 10 seconds.
 
@@ -113,7 +139,7 @@ The app cuts everything below 120 Hz from the mic, before the pitch shift and ba
 
 ## Sound effects
 
-Each trigger plays a sound through the speakers: a whoosh with crackles for the fire, a two-vent hiss for the steam, and thunder for the lightning. Fire flares set off by a shout stay silent, so they don't cover the voice. The Effects volume slider, in the setup panel and on the phone remote, turns all three down together.
+Each trigger plays a sound through the speakers: a whoosh with crackles for the fire, a two-vent hiss for the steam, and thunder for the lightning. Each dog trick plays its own sound. Fire flares set off by a shout stay silent, so they don't cover the voice. The Effects volume slider, in the setup panel and on the phone remote, turns all of these down together.
 
 The app synthesizes all three sounds. To use a recording instead, save it as `public/sfx/fire.wav`, `steam.wav`, or `thunder.wav`.
 
