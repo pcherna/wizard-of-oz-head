@@ -1,4 +1,4 @@
-import { BUBBLE_POP, HICCUP_TIMES, NAP_WAKE, SHAKE_DOUSE, type TrickName } from '../display/tricks';
+import { BUBBLE_POP, HICCUP_TIMES, MELT_DOWN, NAP_WAKE, SHAKE_DOUSE, type TrickName } from '../display/tricks';
 
 /** A vowel formant: center Hz, Q and level. */
 type Formant = [number, number, number];
@@ -251,16 +251,17 @@ export class TrickSounds {
 
   /**
    * Without the witch's clip: a frying sizzle with crackles and a falling wail as the head melts
-   * (3.6–7 s), then a rising sweep and a sparkle as it re-forms.
+   * (from MELT_DOWN to 7 s), then a rising sweep and a sparkle as it re-forms.
    */
   private melt(t: number) {
-    this.noise(t + 3.6, 3.8, { type: 'highpass', frequency: 3500 }, [[0.6, 0.35], [3.1, 0.4], [3.8, 0]]);
+    const down = t + MELT_DOWN;
+    this.noise(down - 0.2, 2.8, { type: 'highpass', frequency: 3500 }, [[0.5, 0.35], [2.2, 0.4], [2.8, 0]]);
     for (let i = 0; i < 40; i++) {
-      this.noise(t + 3.6 + Math.random() * 3.2, 0.02, { type: 'bandpass', frequency: 3000 + Math.random() * 3000, Q: 2 }, [[0.002, 0.6], [0.02, 0]]);
+      this.noise(down + Math.random() * 2.3, 0.02, { type: 'bandpass', frequency: 3000 + Math.random() * 3000, Q: 2 }, [[0.002, 0.6], [0.02, 0]]);
     }
     const oh: Formant[] = [[500, 4, 1], [900, 5, 0.5]];
     const oo: Formant[] = [[350, 4, 1], [700, 5, 0.5]];
-    this.vowel(t + 3.8, 3.2, [[0, 620], [0.7, 680], [3.2, 220]], oh, oo, 0.3, [[0.3, 0.3], [2.5, 0.25], [3.2, 0]], [5, 30]);
+    this.vowel(down, 2.4, [[0, 620], [0.5, 680], [2.4, 220]], oh, oo, 0.3, [[0.3, 0.3], [1.9, 0.25], [2.4, 0]], [5, 30]);
     const band = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 300, Q: 1.5 });
     band.frequency.setValueAtTime(300, t + 7.4);
     band.frequency.exponentialRampToValueAtTime(3000, t + 8.4);

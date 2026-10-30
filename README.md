@@ -70,7 +70,7 @@ Each press of the trick button plays the next trick in this order, then starts o
 6. Colors: "a horse of a different color." The head turns purple, yellow and red, then green again, with a harp sweep at each change.
 7. Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
 8. Pant: pants happily with its tongue hanging out.
-9. Squirrel: snaps its head to the side and stares. It can play a clip first, as described below.
+9. Squirrel: snaps its head to the side and leans in, stretching its neck, and stares. It can play a clip first, as described below.
 10. Hiccups: four little jolts at uneven intervals, each with a "hic!".
 11. Bubble: blows a pink chewing-gum bubble that grows with each breath and pops in its face, scattering bits of gum.
 12. Lunge: a jump scare. The head rears back, then lunges at the audience with a "WOOF!" as the lightning strikes.
@@ -84,7 +84,7 @@ Each press of the trick button plays the next trick in this order, then starts o
 
 A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once. Unmuting the mic stops any trick: the head returns to rest in 0.3 seconds, and the trick's sounds fade out. Fire, steam and lightning carry on. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
 
-Only the Labrador has a tongue and canine teeth, so the other heads skip blep, lick, pant and vampire. The model has no back to its skull, so the inside of the face flashes past during the spin. The spin is fast, so the gap shows for only about a sixth of a second.
+Only the Labrador has a tongue and canine teeth, so the other heads skip blep, lick, pant and vampire. The model has no back to its skull. During the spin, the inside of the head is painted a smooth green, so the back reads as solid.
 
 To check a pose, add `?trick=lick&at=0.8` to the URL. It holds that trick at 0.8 seconds in.
 

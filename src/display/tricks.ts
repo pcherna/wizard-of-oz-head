@@ -69,6 +69,10 @@ export interface Pose {
   zzz: number;
   /** Size of a chewing-gum bubble at the mouth, 0 (none) to 1. */
   bubble: number;
+  /** Leans the head along its nose, in world units, stretching the neck. */
+  lean: number;
+  /** Paints the hollow inside of the head solid, for when its open back shows, 0 to 1. */
+  cap: number;
   /** Grows the upper canines into long fangs, 0 to 1. */
   fangs: number;
   /** Turns the eyes blood red, 0 to 1. */
@@ -109,7 +113,7 @@ export function restPose(): Pose {
     eyeOpen: 1, winkL: 0, winkR: 0, eyeGlow: 1, gazeX: 0,
     rise: 0, spray: 0, ghost: 0,
     melt: 0, colors: 0, lunge: 0, zzz: 0, bubble: 0,
-    fangs: 0, eyeRed: 0,
+    fangs: 0, eyeRed: 0, lean: 0, cap: 0,
   };
 }
 
@@ -122,6 +126,8 @@ export const SHAKE_DOUSE = 0.38;
 export const HICCUP_TIMES = [0.15, 0.85, 1.35, 2.3];
 /** When the gum bubble pops. */
 export const BUBBLE_POP = 3.25;
+/** When the head melts down for real, partway through "what a world, what a world". */
+export const MELT_DOWN = 4.8;
 /** When the witch speaks in public/sfx/melt.wav, [start, end] in seconds, measured from its pauses. */
 const MELT_LINES: [number, number][] = [[0.03, 1.03], [1.29, 2.11], [2.52, 3.53], [3.79, 7.4]];
 /** When the napping dog wakes with a start. trick-sounds.ts snores until then. */
@@ -277,7 +283,7 @@ export const TRICKS: Trick[] = [
     },
   },
   {
-    // Squirrel! The head snaps to the side and freezes, staring, then slowly comes back.
+    // Squirrel! The head snaps to the side and leans in, stretching its neck, freezes staring, then slowly comes back.
     name: 'squirrel',
     seconds: 2.8,
     tongue: false,
@@ -285,6 +291,7 @@ export const TRICKS: Trick[] = [
     pose(t, p, dir) {
       const e = hold(t, 0, 0.1, 1.7, 2.6);
       p.yaw = (0.75 * dir + 0.01 * Math.sin(t * 2 * Math.PI * 18)) * e;
+      p.lean = keys(t, [[0, 0], [0.18, 0.42], [0.32, 0.36], [1.7, 0.36], [2.6, 0]]);
       p.pitch = -0.08 * e;
       p.idle = 1 - e;
       p.eyeGlow = 1 + 0.6 * e;
@@ -442,11 +449,11 @@ export const TRICKS: Trick[] = [
     seconds: 8.8,
     tongue: false,
     clip: 'instead',
-    cues: [[0.3, 'steam'], [1.8, 'steam'], [3.6, 'steam'], [4.6, 'steam'], [5.6, 'steam'], [6.6, 'steam']],
+    cues: [[0.3, 'steam'], [1.8, 'steam'], [3.6, 'steam'], [MELT_DOWN, 'steam'], [5.8, 'steam'], [6.6, 'steam']],
     pose(t, p, dir) {
-      // Only a slight sag through "I'm melting! Melting!". The real melt comes with "Oh, what a
-      // world, what a world" (3.8 to 6.7 s), then it rises back up after she finishes at 7.4 s.
-      const melt = (0.15 * ease((t - 1.3) / 2.5) + 0.85 * Math.pow(ease((t - 3.8) / 2.9), 1.4)) * (1 - ease((t - 7.4) / 1.0));
+      // Only a slight sag through "I'm melting! Melting!" and the start of "Oh, what a world".
+      // The real melt runs from MELT_DOWN to 7 s, and it rises back up after she finishes at 7.4 s.
+      const melt = (0.15 * ease((t - 1.3) / 2.5) + 0.85 * Math.pow(ease((t - MELT_DOWN) / 2.2), 1.4)) * (1 - ease((t - 7.4) / 1.0));
       const writhe = hold(t, 0.1, 0.5, 6.5, 7.2);
       // The jaw works on each of her lines, until the mouth has melted away.
       let talk = 0;
@@ -470,6 +477,7 @@ export const TRICKS: Trick[] = [
     pose(t, p) {
       const e = hold(t, 0, 0.15, 0.95, 1.3);
       p.yaw = 2 * Math.PI * ease((t - 0.15) / 0.8);
+      p.cap = e;
       p.idle = 1 - e;
       p.eyeGlow = 1 + 0.5 * e;
     },

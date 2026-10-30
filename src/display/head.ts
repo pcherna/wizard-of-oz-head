@@ -140,6 +140,8 @@ uniform vec3 uPivot;
 uniform float uFloorY;
 uniform float uMeshUnit;
 uniform mat3 uNeckFix;
+// Pulls the neck base back while the head leans forward, in mesh units, so the neck stretches.
+uniform vec3 uNeckPull;
 attribute float aJaw;
 attribute float aTongue;
 attribute vec2 aTongueTip;
@@ -204,14 +206,15 @@ void moveTongue(inout vec3 p, inout vec3 n, float w) {
 vec3 meltHead(vec3 p) {
   float m = uMelt;
   vec2 c = (p.xz - uPivot.xz) / uMeshUnit;
-  float drip = pow(0.5 + 0.5 * sin(c.x * 31.0 + 1.7 * sin(c.y * 13.0)), 6.0);
+  // A soft ripple, not sharp ridges, so it sags in waves instead of splitting into columns.
+  float drip = pow(0.5 + 0.5 * sin(c.x * 31.0 + 1.7 * sin(c.y * 13.0)), 2.0);
   float h = (p.y - uFloorY) / uMeshUnit;
   // Drips are strongest mid-melt and gone at the end, so it settles into one pile, not columns.
   float drippy = 4.0 * m * (1.0 - m);
-  float sag = clamp(m * (1.0 + 0.5 * drip * drippy), 0.0, 1.0);
+  float sag = clamp(m * (1.0 + 0.15 * drip * drippy), 0.0, 1.0);
   // Everything collapses toward the floor, the neck below it included.
   h *= mix(1.0, 0.12, sag);
-  h -= drippy * 0.12 * drip;
+  h -= drippy * 0.04 * drip;
   c *= 1.0 + 0.9 * m * (1.0 - smoothstep(0.0, 0.35, max(h, 0.0)));
   c.x += sin(h * 14.0 + uTime * 4.0) * 0.025 * m;
   return vec3(uPivot.x + c.x * uMeshUnit, uFloorY + h * uMeshUnit, uPivot.z + c.y * uMeshUnit);
@@ -249,7 +252,7 @@ void main() {
   // share of the head's rotation: fully 0.3 world units down, not at all at the chin.
   float lag = 1.0 - smoothstep(uChinY - 0.3 * uMeshUnit, uChinY, position.y);
   vec3 fromPivot = p - uPivot;
-  p = uPivot + mix(fromPivot, uNeckFix * fromPivot, lag);
+  p = uPivot + mix(fromPivot, uNeckFix * fromPivot, lag) + uNeckPull * lag;
   n = mix(n, uNeckFix * n, lag);
 
   vJawW = w;
@@ -282,6 +285,9 @@ uniform float uShine;
 uniform float uGhost;
 uniform float uMelt;
 uniform float uEyeRed;
+uniform float uCap;
+/** Which way the face points, in world space. */
+uniform vec3 uFacing;
 varying float vFang;
 uniform float uJaw;
 uniform float uSeamY;
@@ -374,6 +380,13 @@ void main() {
   float gap = smoothstep(0.02, 0.2, vJawW) * (1.0 - smoothstep(0.8, 0.98, vJawW));
   col = mix(col, vec3(0.0, 0.025, 0.0), clamp(uSeamMouth * inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
 
+  // The model has no back of the head, so from behind you look into the shell. While uCap is on
+  // (the spin), paint the inside a smooth, featureless green, shaded top to bottom, so it reads as solid.
+  // From behind, the tongue and teeth show through the opening too, so paint them the same.
+  float behind = smoothstep(0.1, -0.2, dot(V, uFacing));
+  float inMouth2 = step(abs(vLocal.x - uMidX), uMouthHalfW * 1.3) * step(uChinY - 0.1, vLocal.y) * step(vLocal.y, uEyeL.y - 0.2);
+  float capped = gl_FrontFacing ? behind * inMouth2 : 1.0;
+  col = mix(col, uBase * (0.12 + 0.3 * smoothstep(uChinY, uEyeL.y + 0.6, vLocal.y)), uCap * capped);
   col *= 1.0 - 0.3 * uMelt;
   // Fangs gleam pale as they grow.
   col = mix(col, vec3(0.85, 1.0, 0.85), vFang * 0.45);
@@ -450,6 +463,7 @@ export class Head implements FlingSource {
   private fullTurn = new THREE.Matrix4();
   private neckTurn = new THREE.Matrix4();
   private neckEuler = new THREE.Euler();
+  private facing = new THREE.Vector3();
   /** When cancelTrick() froze the running trick, to blend it back to rest. */
   private cancelAt: number | null = null;
   /** Only the Labrador has a separate tongue, so only it can do the tongue tricks. */
@@ -520,6 +534,9 @@ export class Head implements FlingSource {
       uFloorY: { value: rig.chinY - 0.15 / rig.scale },
       uMeshUnit: { value: 1 / rig.scale },
       uNeckFix: { value: new THREE.Matrix3() },
+      uNeckPull: { value: new THREE.Vector3() },
+      uCap: { value: 0 },
+      uFacing: { value: new THREE.Vector3(0, 0, 1) },
       uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
@@ -735,7 +752,11 @@ export class Head implements FlingSource {
       g.rotation.z = 0.04 * noise1(t * 0.13 + 30) * idle + pose.roll;
     }
     g.position.y = -0.02 + this.placeY + 0.025 * Math.sin(t * 0.9) + pose.rise;
-    g.position.z = pose.lunge;
+    // A lean pushes the head along its nose, toward whatever it's looking at.
+    const facing = this.facing.set(0, 0, 1).applyQuaternion(g.quaternion);
+    g.position.x = facing.x * pose.lean;
+    g.position.y += facing.y * pose.lean;
+    g.position.z = pose.lunge + facing.z * pose.lean;
     // Now, not at render, so flingPoint() sees this frame's pose.
     g.updateMatrixWorld(true);
     // The head turns with the trick's yaw, but the neck base follows only NECK_FOLLOW of its
@@ -746,6 +767,11 @@ export class Head implements FlingSource {
     this.neckEuler.set(g.rotation.x - pose.pitch * lag, g.rotation.y, g.rotation.z - pose.roll * lag, 'YXZ');
     const neck = this.neckTurn.makeRotationFromEuler(this.neckEuler);
     (u.uNeckFix.value as THREE.Matrix3).setFromMatrix4(full.invert().multiply(neck));
+    // A lean moves the whole head along its nose. Pull the neck base back by the same amount,
+    // in the mesh's own frame (where the nose points along +z), so the neck stretches instead of sliding.
+    (u.uNeckPull.value as THREE.Vector3).set(0, 0, -pose.lean / g.scale.x);
+    u.uCap.value = pose.cap;
+    (u.uFacing.value as THREE.Vector3).copy(facing);
   }
 
   /** Blends between the palette entries on either side of `at`. */
