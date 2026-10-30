@@ -141,7 +141,6 @@ export const TRICKS: Trick[] = [
     name: 'shake',
     seconds: 1.4,
     tongue: false,
-    auto: true,
     cues: [[SHAKE_DOUSE, 'douse'], [SHAKE_DOUSE - 0.2, 'steam']],
     pose(t, p) {
       const e = hold(t, 0, 0.1, 0.95, 1.35);
@@ -196,7 +195,6 @@ export const TRICKS: Trick[] = [
     name: 'sneeze',
     seconds: 2.3,
     tongue: false,
-    auto: true,
     // The plumes take a moment to build, so they start early enough to billow out on the "choo" at 1.2 s.
     cues: [[0.95, 'wideSteam']],
     pose(t, p) {

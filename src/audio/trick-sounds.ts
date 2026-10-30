@@ -5,6 +5,9 @@ type Formant = [number, number, number];
 
 /** Synthesized sounds for the dog tricks. Each one is timed to its trick's poses in tricks.ts. */
 export class TrickSounds {
+  /** A recorded "hic", from public/sfx/hic.mp3 or .wav. It replaces the synthesized one. */
+  hicSample: AudioBuffer | null = null;
+
   constructor(
     private ctx: BaseAudioContext,
     private out: AudioNode,
@@ -72,6 +75,13 @@ export class TrickSounds {
    * under it. Built sample by sample. Each one varies a little.
    */
   private hic(t: number) {
+    if (this.hicSample) {
+      // Each hiccup a little higher or lower, so four in a row don't sound copy-pasted.
+      const src = new AudioBufferSourceNode(this.ctx, { buffer: this.hicSample, playbackRate: 0.93 + Math.random() * 0.14 });
+      src.connect(this.env(t, [[0.001, 1], [this.hicSample.duration + 0.05, 1]]));
+      src.start(t);
+      return;
+    }
     const rate = this.ctx.sampleRate;
     const d = new Float32Array(Math.round(0.09 * rate));
     const shut = 0.04 + Math.random() * 0.01;

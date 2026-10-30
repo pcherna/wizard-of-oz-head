@@ -47,6 +47,9 @@ export class Sfx {
         if (buf) this.samples[name] = buf;
       });
     }
+    loadSample(ctx, '/sfx/hic.mp3')
+      .then((buf) => buf ?? loadSample(ctx, '/sfx/hic.wav'))
+      .then((buf) => (this.tricks.hicSample = buf));
     for (const trick of TRICKS.filter((tr) => tr.clip)) {
       loadSample(ctx, `/sfx/${trick.name}.mp3`)
         .then((buf) => buf ?? loadSample(ctx, `/sfx/${trick.name}.wav`))

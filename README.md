@@ -90,9 +90,11 @@ The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from t
 
 The melt plays the witch's lines from `public/sfx/melt.wav`, in place of its own sound. The melt is timed to that clip: the head starts melting at "I'm melting!", 1.3 seconds in, and re-forms after 7.4 seconds, when she finishes. A different clip needs new times in `MELT_LINES` and the melt trick in `src/display/tricks.ts`. Without the file, the melt plays a synthesized sizzle and wail on the same timeline.
 
+The hiccups can use a recorded "hic" in place of the synthesized one. Save one hiccup as `public/sfx/hic.mp3` or `public/sfx/hic.wav`, with the sound starting right at the beginning of the file. It plays at each of the four jolts, a little faster or slower each time.
+
 ### Autopilot
 
-When nobody presses a button and nobody speaks for 45 seconds, the dog does a small trick on its own: blep, shake, lick, tilt, sneeze, pant, hiccups or wink. It never repeats the trick it just did, and the wait varies by up to 30% so the tricks don't come like clockwork. Autopilot never plays the big set pieces, such as the melt, monkeys or ghost. Those stay under your control. Set the wait with the Autopilot slider in the setup panel. 0 turns autopilot off. Autopilot tricks don't move the trick button's place in its cycle.
+When nobody presses a button and nobody speaks for 45 seconds, the dog does a small trick on its own: blep, lick, tilt, pant, hiccups or wink. It never repeats the trick it just did, and the wait varies by up to 30% so the tricks don't come like clockwork. Autopilot never plays the big set pieces, such as the melt, monkeys or ghost. Those stay under your control. Set the wait with the Autopilot slider in the setup panel. 0 turns autopilot off. Autopilot tricks don't move the trick button's place in its cycle.
 
 ## Upside-down projector
 
