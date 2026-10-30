@@ -17,6 +17,9 @@ const RAINBOW_BASS: [number, number][] = [
   [0, 62], [1, 69], [2, 59], [3, 66], [4, 54], [5, 61], [6, 62], [7, 60], [8, 55], [9, 62], [10, 55], [11, 65], [12, 62], [13, 66], [14, 69],
 ];
 
+/** Gain for the recorded snores and snorts, which are leveled to about -16 dB on average. */
+const SNORE_LEVEL = 1;
+
 function midiHz(note: number): number {
   return 440 * 2 ** ((note - 69) / 12);
 }
@@ -26,6 +29,12 @@ export class TrickSounds {
   /** Recorded "hic"s, from public/sfx/hic-1.wav, hic-2.wav and so on. They replace the synthesized one. */
   hicSamples: AudioBuffer[] = [];
   private lastHic = -1;
+  /** Recorded snores, from public/sfx/snore-1.wav and so on. They replace the synthesized one. */
+  snoreSamples: AudioBuffer[] = [];
+  private lastSnore = -1;
+  /** Recorded snorts, from public/sfx/snort-1.wav and so on, for waking from the nap. */
+  snortSamples: AudioBuffer[] = [];
+  private lastSnort = -1;
 
   constructor(
     private ctx: BaseAudioContext,
@@ -51,8 +60,6 @@ export class TrickSounds {
   private synth(name: TrickName, dir: number) {
     const t = this.ctx.currentTime;
     switch (name) {
-      case 'blep':
-        return this.raspberry(t + 0.3, 1.2);
       case 'shake':
         this.shake(t);
         return this.douse(t + SHAKE_DOUSE);
@@ -103,8 +110,7 @@ export class TrickSounds {
       case 'firefly':
         return this.firefly(t, dir);
       case 'scratch':
-        this.scrape(t);
-        return this.groan(t + 2.6);
+        return this.scrape(t);
       case 'pumpkin':
         return this.candle(t);
       case 'treat':
@@ -349,12 +355,6 @@ export class TrickSounds {
     this.noiseInto(t + start, end - start, split, [[0.15, 0.7], [end - start - 0.15, 0.7], [end - start, 0]], strokes);
   }
 
-  /** A long, contented "mmmmh" through closed lips, sinking at the end. */
-  private groan(t: number) {
-    const mm: Formant[] = [[250, 3, 1], [900, 5, 0.15]];
-    this.vowel(t, 0.9, [[0, 150], [0.3, 165], [0.9, 105]], mm, mm, 0.2, [[0.1, 0.4], [0.6, 0.35], [0.9, 0]]);
-  }
-
   /**
    * The jack-o'-lantern: a match strikes and the candle catches with a soft "whump", then
    * crackles quietly until the dog blows it out with a long "fff".
@@ -437,16 +437,8 @@ export class TrickSounds {
    * under it. Built sample by sample. Each one varies a little.
    */
   private hic(t: number) {
-    const n = this.hicSamples.length;
-    if (n > 0) {
-      // A different recording each time, never the same twice in a row, a little higher or lower.
-      let i = Math.floor(Math.random() * n);
-      if (n > 1 && i === this.lastHic) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
-      this.lastHic = i;
-      const buffer = this.hicSamples[i];
-      const src = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: 0.96 + Math.random() * 0.08 });
-      src.connect(this.env(t, [[0.001, 1], [buffer.duration + 0.05, 1]]));
-      src.start(t);
+    if (this.hicSamples.length > 0) {
+      this.lastHic = this.playRecorded(this.hicSamples, this.lastHic, t, 1, 0.04);
       return;
     }
     const rate = this.ctx.sampleRate;
@@ -502,23 +494,27 @@ export class TrickSounds {
     this.noise(t + 0.17, 0.08, { type: 'highpass', frequency: 2000 }, [[0.01, 0.25 * level], [0.08, 0]]);
   }
 
-  /** Two snores, each a rumbling inhale and a thin whistle out, then a startled snort and "huh?!". */
+  /** Two snores, then a snort that jolts it awake. */
   private nap(t: number) {
-    for (const at of [2.9, 4.1]) {
-      this.snore(t + at);
-      const whistle = this.osc('sine', 1150, t + at + 0.6, 0.4);
-      whistle.frequency.setValueAtTime(1150, t + at + 0.6);
-      whistle.frequency.exponentialRampToValueAtTime(850, t + at + 1.0);
-      whistle.connect(this.env(t + at + 0.6, [[0.08, 0.12], [0.3, 0.1], [0.4, 0]]));
-    }
-    const wake = t + NAP_WAKE;
-    this.noise(wake, 0.15, { type: 'bandpass', frequency: 900, Q: 1 }, [[0.005, 0.4], [0.15, 0]]);
-    const uh: Formant[] = [[650, 4, 1], [1100, 5, 0.6]];
-    this.vowel(wake + 0.15, 0.25, [[0, 160], [0.25, 330]], uh, uh, 0.8, [[0.02, 0.28], [0.2, 0.22], [0.25, 0]]);
+    for (const at of [2.9, 4.1]) this.snore(t + at);
+    this.snort(t + NAP_WAKE);
   }
 
-  /** A rumbling inhale: a low buzz fluttering like a soft palate. */
+  /** A snort: a recorded one if there is one, or a short burst of breath. */
+  private snort(t: number) {
+    if (this.snortSamples.length === 0) {
+      this.noise(t, 0.15, { type: 'bandpass', frequency: 900, Q: 1 }, [[0.005, 0.4], [0.15, 0]]);
+      return;
+    }
+    this.lastSnort = this.playRecorded(this.snortSamples, this.lastSnort, t, SNORE_LEVEL, 0);
+  }
+
+  /** A rumbling inhale: a recorded snore if there is one, or a low buzz fluttering like a soft palate. */
   private snore(t: number) {
+    if (this.snoreSamples.length > 0) {
+      this.lastSnore = this.playRecorded(this.snoreSamples, this.lastSnore, t, SNORE_LEVEL, 0.03);
+      return;
+    }
     const seconds = 0.6;
     const flutter = new GainNode(this.ctx, { gain: 0.5 });
     this.osc('sine', 27, t, seconds).connect(new GainNode(this.ctx, { gain: 0.5 })).connect(flutter.gain);
@@ -570,43 +566,6 @@ export class TrickSounds {
     band.frequency.exponentialRampToValueAtTime(3000, t + 8.4);
     this.noiseInto(t + 7.4, 1, band, [[0.8, 0.8], [1, 0]]);
     this.ding(t + 8.4);
-  }
-
-  /**
-   * A wet "pbbbbt": a "P" burst, then the lips flapping about 32 times a second. Each flap is a
-   * short noisy pop with a fleshy thud under it, uneven in timing and strength, and the flaps
-   * slow and sputter at the end. Built sample by sample, then shaped by the mouth's resonance.
-   */
-  private raspberry(t: number, seconds: number) {
-    const rate = this.ctx.sampleRate;
-    const buffer = this.ctx.createBuffer(1, Math.round((seconds + 0.1) * rate), rate);
-    const d = buffer.getChannelData(0);
-    const pop = (at: number, level: number, decay: number, thudHz: number) => {
-      const start = Math.round(at * rate);
-      const len = Math.min(d.length - start, Math.round(decay * 6 * rate));
-      for (let i = 0; i < len; i++) {
-        const k = i / rate;
-        const fall = Math.exp(-k / decay);
-        d[start + i] += level * fall * ((Math.random() * 2 - 1) * 0.7 + Math.sin(2 * Math.PI * thudHz * k) * 0.6);
-      }
-    };
-    // The "P": lips bursting open.
-    pop(0, 1.2, 0.012, 140);
-    for (let at = 0.03; at < seconds - 0.05; ) {
-      const k = at / seconds;
-      // Steady at first, then slowing and sputtering as the breath runs out.
-      const hz = 32 - 12 * Math.max(0, (k - 0.7) / 0.3);
-      const jitter = 1 + (Math.random() - 0.5) * (k > 0.7 ? 0.5 : 0.24);
-      const fade = k < 0.85 ? 1 : 1 - (k - 0.85) / 0.15;
-      pop(at, (0.55 + Math.random() * 0.45) * fade, 0.005 + Math.random() * 0.004, 170 + Math.random() * 90);
-      at += jitter / hz;
-    }
-    const src = new AudioBufferSourceNode(this.ctx, { buffer });
-    const hp = new BiquadFilterNode(this.ctx, { type: 'highpass', frequency: 90 });
-    const lips = new BiquadFilterNode(this.ctx, { type: 'peaking', frequency: 900, Q: 1.2, gain: 8 });
-    const lp = new BiquadFilterNode(this.ctx, { type: 'lowpass', frequency: 3800 });
-    src.connect(hp).connect(lips).connect(lp).connect(this.env(t, [[0.01, 0.78], [seconds, 0.78], [seconds + 0.05, 0]]));
-    src.start(t);
   }
 
   /** Water hitting the fire: a sharp hiss that fades, with a few spits. */
@@ -668,6 +627,21 @@ export class TrickSounds {
   }
 
   /** Plays samples made here at time t, at the given level. */
+  /**
+   * Plays one of `samples` at t: a different recording each time, never `last` (the index played
+   * last time) twice in a row, up to `vary` faster or slower. Returns the index it played.
+   */
+  private playRecorded(samples: AudioBuffer[], last: number, t: number, level: number, vary: number): number {
+    const n = samples.length;
+    let i = Math.floor(Math.random() * n);
+    if (n > 1 && i === last) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
+    const buffer = samples[i];
+    const src = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: 1 - vary + Math.random() * 2 * vary });
+    src.connect(this.env(t, [[0.001, level], [buffer.duration + 0.05, level]]));
+    src.start(t);
+    return i;
+  }
+
   private playSamples(d: Float32Array<ArrayBuffer>, t: number, level: number) {
     const buffer = this.ctx.createBuffer(1, d.length, this.ctx.sampleRate);
     buffer.copyToChannel(d, 0);

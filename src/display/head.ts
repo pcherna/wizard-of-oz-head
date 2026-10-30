@@ -1284,6 +1284,8 @@ function labradorMouthFloor(geometry: THREE.BufferGeometry, parts: Int32Array): 
  */
 function withTongueUnderside(geometry: THREE.BufferGeometry, parts: Int32Array): { geometry: THREE.BufferGeometry; parts: Int32Array } {
   const BIN = 0.02;
+  /** The least thickness of the tongue, from its top down to the underside. */
+  const THICK = 0.04;
   const pos = geometry.attributes.position;
   const normal = geometry.attributes.normal;
   const tongueW = geometry.attributes.aTongue;
@@ -1320,8 +1322,11 @@ function withTongueUnderside(geometry: THREE.BufferGeometry, parts: Int32Array):
   const n = out.attributes.normal;
   const tip = out.attributes.aTongueTip;
   for (const [from, to] of copy) {
-    // Flatten onto the rim, a little narrower to match the shell's sides there.
-    p.setXYZ(to, pos.getX(from) * 0.8, (low.get(Math.floor(pos.getZ(from) / BIN)) ?? pos.getY(from)) + 0.004, pos.getZ(from));
+    // Flatten onto the rim, a little narrower to match the shell's sides there. Where the shell
+    // is a thin sheet, the rim is nearly level with the top, and the two flickered through each
+    // other. Keep at least THICK below the top there.
+    const rim = (low.get(Math.floor(pos.getZ(from) / BIN)) ?? pos.getY(from)) + 0.004;
+    p.setXYZ(to, pos.getX(from) * 0.8, Math.min(rim, pos.getY(from) - THICK), pos.getZ(from));
     n.setXYZ(to, 0, -1, 0);
     // Thinning the tip squeezes the upper surface down. Squeeze the underside up to meet it.
     if (tip) tip.setXY(to, tip.getX(to) * 0.8, -tip.getY(to));

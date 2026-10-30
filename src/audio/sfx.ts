@@ -49,7 +49,9 @@ export class Sfx {
         if (buf) this.samples[name] = buf;
       });
     }
-    this.loadHics(1);
+    this.loadNumbered('hic', this.tricks.hicSamples);
+    this.loadNumbered('snore', this.tricks.snoreSamples);
+    this.loadNumbered('snort', this.tricks.snortSamples);
     for (const trick of TRICKS.filter((tr) => tr.clip)) {
       loadSample(ctx, `/sfx/${trick.name}.mp3`)
         .then((buf) => buf ?? loadSample(ctx, `/sfx/${trick.name}.wav`))
@@ -59,12 +61,12 @@ export class Sfx {
     }
   }
 
-  /** Loads public/sfx/hic-1.wav, hic-2.wav and so on, until one is missing. */
-  private loadHics(n: number) {
-    loadSample(this.ctx, `/sfx/hic-${n}.wav`).then((buf) => {
+  /** Loads public/sfx/<name>-1.wav, <name>-2.wav and so on into `into`, until one is missing. */
+  private loadNumbered(name: string, into: AudioBuffer[], n = 1) {
+    loadSample(this.ctx, `/sfx/${name}-${n}.wav`).then((buf) => {
       if (!buf) return;
-      this.tricks.hicSamples.push(buf);
-      this.loadHics(n + 1);
+      into.push(buf);
+      this.loadNumbered(name, into, n + 1);
     });
   }
 

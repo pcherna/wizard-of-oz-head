@@ -89,10 +89,10 @@ These play only on autopilot, never from the trick button. See Autopilot below.
 - Pant: pants happily with its tongue hanging out.
 - Hiccups: four little jolts at uneven intervals, each with a "hic!".
 - Wink: both eyes flare bright, then one goes dark for a moment, with a sparkle.
-- Nap: the poppy field. Twice the head sinks and lolls to one side, then jerks partway back up. The third time it stays down, snoring with "Z"s rising, then wakes with a snort and a "huh?!".
+- Nap: the poppy field. Twice the head sinks and lolls to one side, then jerks partway back up. The third time it stays down, snoring with "Z"s rising, then wakes with a snort.
 - Perk: an owner's whistle from one side. The ear on that side springs straight up with a "boing", and the head turns and tilts toward the sound, listening. Then the ear flops back down.
-- Scratch: a scratch in the sweet spot behind one ear. The head leans into it with its eyes shut, that ear lifts a little, and the scratching goes "shhhh" faster and faster. Then a contented "mmmh".
-- Blep: sticks its tongue out and waggles its head, with a raspberry.
+- Scratch: a scratch in the sweet spot behind one ear. The head leans into it with its eyes shut, that ear lifts a little, and the scratching goes "shhhh" faster and faster.
+- Blep: the tongue thrusts out once and goes straight back in.
 
 A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once, and the last trick's sounds fade out in about a tenth of a second. Unmuting the mic stops any trick: the head returns to rest in 0.3 seconds, and the trick's sounds fade out. Fire, steam and lightning carry on. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
 
@@ -105,6 +105,8 @@ The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from t
 The melt plays the witch's lines from `public/sfx/melt.wav`, in place of its own sound. The melt is timed to that clip: the head starts melting at "I'm melting!", 1.3 seconds in, and re-forms after 7.4 seconds, when she finishes. A different clip needs new times in `MELT_LINES` and the melt trick in `src/display/tricks.ts`. Without the file, the melt plays a synthesized sizzle and wail on the same timeline.
 
 The hiccups use recorded "hic"s from `public/sfx/hic-1.wav`, `hic-2.wav` and so on, numbered from 1 with no gaps. Each jolt plays one at random, never the same one twice in a row, a little faster or slower each time. Each file must start right at the sound, so it lands on the jolt. Without the files, the hiccups use a synthesized "hic".
+
+The nap snores with recordings from `public/sfx/snore-1.wav`, `snore-2.wav` and so on, numbered the same way, and wakes with a snort from `public/sfx/snort-1.wav` and so on. Each snore and snort plays one of its files at random, never the same one twice in a row. Each file should start close to its sound. Keep snores under 1.2 seconds, since the nap snores once every 1.2 seconds. Without the files, the nap uses a synthesized snore and snort.
 
 ### Autopilot
 

@@ -453,7 +453,7 @@ export const TRICKS: Trick[] = [
   },
   {
     // Scratched in the sweet spot behind one ear: the head leans into it with eyes shut in bliss,
-    // that ear lifts, and the scratching speeds up, jostling the head. Then a contented groan.
+    // that ear lifts, and the scratching speeds up, jostling the head.
     name: 'scratch',
     seconds: 3.7,
     tongue: false,
@@ -496,22 +496,18 @@ export const TRICKS: Trick[] = [
     },
   },
   {
-    // Sticks its tongue out and waggles its head: a taunt.
+    // Blep: the tongue thrusts out once and goes straight back in.
     name: 'blep',
-    seconds: 2.1,
+    seconds: 1.2,
     tongue: true,
     autopilot: true,
     pose(t, p) {
-      const e = hold(t, 0, 0.25, 1.6, 1.95);
-      const out = hold(t, 0.1, 0.4, 1.5, 1.85);
+      const e = hold(t, 0, 0.15, 0.75, 1.1);
       p.jaw = 0.85;
       p.jawMix = e;
-      p.tongueOut = out;
+      p.tongueOut = keys(t, [[0.1, 0], [0.25, 1.1], [0.32, 1], [0.55, 1], [0.8, 0]]);
       p.tongueDroop = 1;
-      p.tongueSide = 0.05 * Math.sin(t * 2 * Math.PI * 6) * out;
-      p.roll = 0.18 * e;
-      p.yaw = 0.12 * Math.sin(t * 2 * Math.PI * 2.5) * e;
-      p.eyeOpen = 1 - 0.5 * e;
+      p.eyeOpen = 1 - 0.3 * e;
       p.idle = 1 - 0.7 * e;
     },
   },
@@ -626,7 +622,7 @@ export const TRICKS: Trick[] = [
     clip: 'first',
     pose(t, p, dir) {
       const e = hold(t, 0, 0.1, 1.7, 2.6);
-      p.yaw = (0.75 * dir + 0.01 * Math.sin(t * 2 * Math.PI * 18)) * e;
+      p.yaw = 0.75 * dir * e;
       p.lean = keys(t, [[0, 0], [0.18, 0.42], [0.32, 0.36], [1.7, 0.36], [2.6, 0]]);
       p.pitch = -0.08 * e;
       p.idle = 1 - e;
@@ -645,7 +641,8 @@ export const TRICKS: Trick[] = [
       for (const at of HICCUP_TIMES) jolt = Math.max(jolt, hold(t, at, at + 0.04, at + 0.07, at + 0.35));
       p.rise = 0.06 * jolt;
       p.pitch = -0.14 * jolt;
-      p.jaw = RELAXED_JAW + 0.25 * jolt;
+      // 60% of the full hiccup gape, so each "hic" is a small pop of the mouth.
+      p.jaw = 0.6 * (RELAXED_JAW + 0.25 * jolt);
       p.jawMix = jolt;
       p.eyeGlow = 1 + 0.9 * jolt;
       p.idle = 1 - 0.5 * hold(t, 0, 0.1, 2.6, 3.0);
