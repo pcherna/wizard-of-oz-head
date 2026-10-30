@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { HeadVariant } from '../config';
 import type { MouthState } from '../audio/lipsync';
 import { FACE_MID_X, OzSculptor, mapFeature, type SculptParams } from './oz-sculpt';
-import { restPose, type Trick } from './tricks';
+import { blendToRest, restPose, type Trick } from './tricks';
 import type { FlingSource } from './droplets';
 
 /** Landmarks in the mesh's own coordinates. Every model faces +z with +y up. */
@@ -139,8 +139,16 @@ uniform float uMelt;
 uniform vec3 uPivot;
 uniform float uFloorY;
 uniform float uMeshUnit;
+uniform mat3 uNeckFix;
 attribute float aJaw;
 attribute float aTongue;
+attribute vec2 aTongueTip;
+// The upper canines: xyz is the tooth's root, w is 1. All zero off the canines.
+attribute vec4 aFang;
+// How far this mouth-floor vertex sinks while the tongue is out. See labradorMouthFloor().
+attribute float aFloorDrop;
+uniform float uFangs;
+varying float vFang;
 varying vec3 vNormalW;
 varying vec3 vPosW;
 varying vec3 vLocal;
@@ -166,6 +174,9 @@ float jawWeight(vec3 p) {
 // uTongue is (slide, curl, side, droop). w runs from 0 at the root to 1 at the tip.
 void moveTongue(inout vec3 p, inout vec3 n, float w) {
   float slide = uTongue.x;
+  // The model's tongue ends in a thick, blunt tip that only looks right inside the mouth.
+  // Out in the open, round it and thin it toward an edge.
+  p.xy += smoothstep(0.0, 0.35, slide) * aTongueTip;
   p.z += slide * w * 0.45;
   // Rise over the lower front teeth on the way out.
   p.y += slide * w * 0.1;
@@ -175,7 +186,10 @@ void moveTongue(inout vec3 p, inout vec3 n, float w) {
   // Bend the part in front of a pivot just ahead of the upper lip, so a curl clears it.
   float pivotY = uTongueLip.x + slide * 0.1;
   float pivotZ = uTongueLip.y + 0.3;
-  float bend = uTongue.y * smoothstep(pivotZ - 0.05, pivotZ + 0.15, p.z);
+  // Spread over a good length of tongue, so it curls in an arc instead of folding at a corner.
+  // It starts at the pivot, not behind it: rotating anything behind the pivot swings it down and
+  // back, which dragged the underside of the tongue toward the lips.
+  float bend = uTongue.y * smoothstep(pivotZ, pivotZ + 0.35, p.z);
   float c = cos(bend);
   float s = sin(bend);
   vec2 q = vec2(p.z - pivotZ, p.y - pivotY);
@@ -192,9 +206,12 @@ vec3 meltHead(vec3 p) {
   vec2 c = (p.xz - uPivot.xz) / uMeshUnit;
   float drip = pow(0.5 + 0.5 * sin(c.x * 31.0 + 1.7 * sin(c.y * 13.0)), 6.0);
   float h = (p.y - uFloorY) / uMeshUnit;
-  float sag = clamp(m * (1.0 + 0.5 * drip), 0.0, 1.0);
-  if (h > 0.0) h *= mix(1.0, 0.12, sag);
-  h -= m * m * 0.3 * drip;
+  // Drips are strongest mid-melt and gone at the end, so it settles into one pile, not columns.
+  float drippy = 4.0 * m * (1.0 - m);
+  float sag = clamp(m * (1.0 + 0.5 * drip * drippy), 0.0, 1.0);
+  // Everything collapses toward the floor, the neck below it included.
+  h *= mix(1.0, 0.12, sag);
+  h -= drippy * 0.12 * drip;
   c *= 1.0 + 0.9 * m * (1.0 - smoothstep(0.0, 0.35, max(h, 0.0)));
   c.x += sin(h * 14.0 + uTime * 4.0) * 0.025 * m;
   return vec3(uPivot.x + c.x * uMeshUnit, uFloorY + h * uMeshUnit, uPivot.z + c.y * uMeshUnit);
@@ -204,6 +221,12 @@ void main() {
   vec3 p = position;
   vec3 n = normal;
   if (aTongue > 0.0) moveTongue(p, n, aTongue);
+  // The model's mouth floor is sculpted as a second tongue, under the real one. Sink it flat
+  // while the tongue is out, so no tongue stays behind.
+  p.y -= aFloorDrop * smoothstep(0.0, 0.3, uTongue.x);
+  // Vampire: stretch each upper canine down from its root into a long fang.
+  if (aFang.w > 0.0) p = aFang.xyz + (p - aFang.xyz) * vec3(1.0 + 0.3 * uFangs, 1.0 + 1.5 * uFangs, 1.0 + 0.3 * uFangs);
+  vFang = aFang.w * uFangs;
   float m = mouthMask(position) * uSeamMouth;
   float nearSeam = exp(-pow((position.y - uSeamY) / 0.3, 2.0));
 
@@ -222,6 +245,12 @@ void main() {
   p = uHinge + vec3(q.x, q.y * c - q.z * s, q.y * s + q.z * c);
   n = vec3(n.x, n.y * c - n.z * s, n.y * s + n.z * c);
   if (uMelt > 0.0) p = meltHead(p);
+  // The neck lags a trick's tilt and nod. Below the chin, uNeckFix undoes part of the trick's
+  // share of the head's rotation: fully 0.3 world units down, not at all at the chin.
+  float lag = 1.0 - smoothstep(uChinY - 0.3 * uMeshUnit, uChinY, position.y);
+  vec3 fromPivot = p - uPivot;
+  p = uPivot + mix(fromPivot, uNeckFix * fromPivot, lag);
+  n = mix(n, uNeckFix * n, lag);
 
   vJawW = w;
   vLocal = position;
@@ -252,6 +281,8 @@ uniform float uRimGlow;
 uniform float uShine;
 uniform float uGhost;
 uniform float uMelt;
+uniform float uEyeRed;
+varying float vFang;
 uniform float uJaw;
 uniform float uSeamY;
 uniform float uMouthHalfW;
@@ -282,6 +313,7 @@ vec4 paintEye(vec3 d, float open) {
   vec3 c = vec3(0.42, 0.58, 0.36);
   c = mix(c, vec3(0.95, 1.15, 0.15), 1.0 - smoothstep(0.85, 1.0, r));
   c = mix(c, vec3(0.0, 0.02, 0.0), 1.0 - smoothstep(0.48, 0.58, r));
+  c = mix(c, c.g * vec3(1.6, 0.15, 0.1), uEyeRed);
   return vec4(c, cover);
 }
 
@@ -333,7 +365,7 @@ void main() {
     vec3 dr = vLocal - uEyeR;
     float r2 = uEyeRadius * uEyeRadius;
     float glow = exp(-dot(dl, dl) / r2) * (1.0 - uWink.x) + exp(-dot(dr, dr) / r2) * (1.0 - uWink.y);
-    col += vec3(0.75, 1.0, 0.45) * glow * 0.7 * uEyeGlow * uEyeOpen;
+    col += mix(vec3(0.75, 1.0, 0.45), vec3(1.0, 0.1, 0.06), uEyeRed) * glow * 0.7 * uEyeGlow * uEyeOpen;
   }
 
   // Mouth interior: the faces stretched across the lip seam.
@@ -343,6 +375,8 @@ void main() {
   col = mix(col, vec3(0.0, 0.025, 0.0), clamp(uSeamMouth * inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
 
   col *= 1.0 - 0.3 * uMelt;
+  // Fangs gleam pale as they grow.
+  col = mix(col, vec3(0.85, 1.0, 0.85), vFang * 0.45);
   col += uFlash * vec3(0.7, 0.85, 1.0) * (0.25 + 0.8 * key);
   col *= 0.96 + 0.04 * sin(vPosW.y * 140.0 - uTime * 6.0);
   gl_FragColor = vec4(col * neck, 1.0);
@@ -358,6 +392,12 @@ const PALETTE = [
   [0xa82222, 0xff8070],
   [0x2a9a36, 0x7dff8a],
 ].map(([base, rim]) => [new THREE.Color(base), new THREE.Color(rim)]);
+
+/** How much of a trick's tilt and nod the base of the neck follows. */
+const NECK_FOLLOW = 1 / 3;
+
+/** How long a cancelled trick takes to return to rest. */
+const CANCEL_SEC = 0.3;
 
 /** Gum bubble radius at full size, in world units at head scale 1. */
 const BUBBLE_RADIUS = 0.28;
@@ -407,8 +447,15 @@ export class Head implements FlingSource {
   private trick: Trick | null = null;
   private trickStart = 0;
   private trickDir = 1;
+  private fullTurn = new THREE.Matrix4();
+  private neckTurn = new THREE.Matrix4();
+  private neckEuler = new THREE.Euler();
+  /** When cancelTrick() froze the running trick, to blend it back to rest. */
+  private cancelAt: number | null = null;
   /** Only the Labrador has a separate tongue, so only it can do the tongue tricks. */
   readonly hasTongue: boolean;
+  /** Only the Labrador has separate canine teeth to grow into fangs. */
+  readonly hasFangs: boolean;
   spray = 0;
   /** Vertices far from the roll axis (ears, cheeks, crown), where a shake flings water from. */
   private flingVerts: number[];
@@ -431,6 +478,7 @@ export class Head implements FlingSource {
     opts: { alphaCut?: number; doubleSided?: boolean } = {},
   ) {
     this.hasTongue = geometry.hasAttribute('aTongue');
+    this.hasFangs = geometry.hasAttribute('aFang');
     this.uniforms = {
       uJaw: { value: 0 },
       uWidth: { value: 0 },
@@ -465,10 +513,13 @@ export class Head implements FlingSource {
       uShine: { value: 1 },
       uGhost: { value: 0 },
       uMelt: { value: 0 },
+      uFangs: { value: 0 },
+      uEyeRed: { value: 0 },
       uPivot: { value: rig.pivot },
       // A little under the chin, so the jaw melts too.
       uFloorY: { value: rig.chinY - 0.15 / rig.scale },
       uMeshUnit: { value: 1 / rig.scale },
+      uNeckFix: { value: new THREE.Matrix3() },
       uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
@@ -534,11 +585,19 @@ export class Head implements FlingSource {
       if (o instanceof THREE.Mesh && !source) source = o;
     });
     if (!source) throw new Error('No mesh in dog.glb');
-    const { geometry, material } = source as THREE.Mesh;
-    const std = material as THREE.MeshStandardMaterial;
-    geometry.setAttribute('aJaw', labradorJawWeights(geometry, LABRADOR_RIG.hinge));
-    const tongue = labradorTongueWeights(geometry);
-    if (tongue) geometry.setAttribute('aTongue', tongue);
+    const std = (source as THREE.Mesh).material as THREE.MeshStandardMaterial;
+    let geometry = (source as THREE.Mesh).geometry;
+    let parts = meshParts(geometry);
+    const jaw = labradorJawWeights(geometry, LABRADOR_RIG.hinge, parts);
+    geometry.setAttribute('aJaw', jaw);
+    const tongue = labradorTongueWeights(geometry, parts, jaw);
+    if (tongue) {
+      geometry.setAttribute('aTongue', tongue);
+      ({ geometry, parts } = withTongueUnderside(geometry, parts));
+      geometry.setAttribute('aFloorDrop', labradorMouthFloor(geometry, parts));
+    }
+    const fangs = labradorFangs(geometry, parts, geometry.attributes.aJaw as THREE.BufferAttribute);
+    if (fangs) geometry.setAttribute('aFang', fangs);
     return new Head(geometry, LABRADOR_RIG, std.map, { alphaCut: std.alphaTest, doubleSided: std.side === THREE.DoubleSide });
   }
 
@@ -581,6 +640,12 @@ export class Head implements FlingSource {
     this.trick = trick;
     this.trickStart = t;
     this.trickDir = dir;
+    this.cancelAt = null;
+  }
+
+  /** Brings a running trick quickly back to rest, from wherever it is. */
+  cancelTrick(t: number) {
+    if (this.trick && this.cancelAt === null) this.cancelAt = t;
   }
 
   /** The top of the head, in world space. */
@@ -609,9 +674,15 @@ export class Head implements FlingSource {
     this.frameDt = Math.max(dt, 1e-3);
     const pose = restPose();
     if (this.trick) {
-      const at = this.pinnedTrickAt ?? t - this.trickStart;
+      // A cancelled trick holds where it was and blends back to rest.
+      const at = this.pinnedTrickAt ?? (this.cancelAt ?? t) - this.trickStart;
       if (at < this.trick.seconds) this.trick.pose(at, pose, this.trickDir);
       else this.trick = null;
+      if (this.cancelAt !== null) {
+        const k = 1 - (t - this.cancelAt) / CANCEL_SEC;
+        blendToRest(pose, Math.max(0, k * k * (3 - 2 * k)));
+        if (k <= 0) this.trick = this.cancelAt = null;
+      }
     }
     u.uTime.value = t;
     u.uJaw.value = mouth.jaw + (pose.jaw - mouth.jaw) * pose.jawMix;
@@ -622,6 +693,8 @@ export class Head implements FlingSource {
     this.ghost = pose.ghost;
     this.setGhost(pose.ghost);
     u.uMelt.value = pose.melt;
+    u.uFangs.value = pose.fangs;
+    u.uEyeRed.value = pose.eyeRed;
     this.setColors(pose.colors);
     this.setBubble(pose.bubble, t);
     u.uWidth.value = mouth.width;
@@ -665,6 +738,14 @@ export class Head implements FlingSource {
     g.position.z = pose.lunge;
     // Now, not at render, so flingPoint() sees this frame's pose.
     g.updateMatrixWorld(true);
+    // The head turns with the trick's yaw, but the neck base follows only NECK_FOLLOW of its
+    // pitch and roll: hand the shader the rotation that takes the full turn back to that. Yaw
+    // stays, so the spin turns the neck too instead of twisting it.
+    const full = this.fullTurn.makeRotationFromEuler(g.rotation);
+    const lag = 1 - NECK_FOLLOW;
+    this.neckEuler.set(g.rotation.x - pose.pitch * lag, g.rotation.y, g.rotation.z - pose.roll * lag, 'YXZ');
+    const neck = this.neckTurn.makeRotationFromEuler(this.neckEuler);
+    (u.uNeckFix.value as THREE.Matrix3).setFromMatrix4(full.invert().multiply(neck));
   }
 
   /** Blends between the palette entries on either side of `at`. */
@@ -710,34 +791,83 @@ export class Head implements FlingSource {
 }
 
 /**
+ * The parts of a mesh that don't touch each other: each vertex's part id. Welds vertices at the
+ * same position first, since UV seams split them.
+ */
+function meshParts(geometry: THREE.BufferGeometry): Int32Array {
+  const pos = geometry.attributes.position;
+  const parent = Int32Array.from({ length: pos.count }, (_, i) => i);
+  const find = (a: number) => {
+    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
+    return a;
+  };
+  const union = (a: number, b: number) => {
+    parent[find(a)] = find(b);
+  };
+  const welded = new Map<string, number>();
+  for (let i = 0; i < pos.count; i++) {
+    const key = `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+    const other = welded.get(key);
+    if (other === undefined) welded.set(key, i);
+    else union(i, other);
+  }
+  const index = geometry.index;
+  for (let t = 0; index && t < index.count; t += 3) {
+    union(index.getX(t), index.getX(t + 1));
+    union(index.getX(t), index.getX(t + 2));
+  }
+  return parent.map((_, i) => find(i));
+}
+
+/**
  * 1 for the Lab's lower jaw, tongue and lower teeth, 0 for the rest. The split follows the gap
  * between upper and lower parts of the mouth, which sits at a different height at the midline,
  * along the tooth row, and at the lips. It fades out behind the mouth corner, out toward the
  * ears, and down the throat.
+ *
+ * The teeth and whiskers are separate small parts, and each moves whole, at the weight of its
+ * middle. On the main mesh, the split blends softly where it drops from the midline to the tooth
+ * row. A sharp step there tore the gum lining into a spike behind the upper canine when the
+ * mouth opened wide.
  */
-function labradorJawWeights(geometry: THREE.BufferGeometry, hinge: THREE.Vector3): THREE.BufferAttribute {
+function labradorJawWeights(geometry: THREE.BufferGeometry, hinge: THREE.Vector3, parts: Int32Array): THREE.BufferAttribute {
   const pos = geometry.attributes.position;
-  const weights = new Float32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) {
-    const x = Math.abs(pos.getX(i));
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
+  const weight = (px: number, y: number, z: number, soft: boolean) => {
+    const x = Math.abs(px);
     // Three split lines, measured from cross-sections: palate over tongue at the midline,
     // under the upper tooth tips along the tooth row (those teeth hang lower), and the lips.
     const inner = 4.105 + (4.45 - z) * 0.325;
     const teeth = 3.99 + (4.32 - z) * 0.21;
     const lips = 4.05 + (4.47 - z) * 0.11;
-    const toothRow = smoothstep(0.14, 0.19, x);
+    const toothRow = soft ? smoothstep(0.12, 0.24, x) : smoothstep(0.14, 0.19, x);
     const outside = smoothstep(0.33, 0.39, x);
     const split = mix(mix(inner, teeth, toothRow), lips, outside);
     // Sharp inside the mouth. Soft at the lips, so the hanging upper lips stretch with the jaw
-    // instead of dangling like fangs.
-    const band = 0.01 + 0.07 * outside;
+    // instead of dangling like fangs, and soft where the split drops to the tooth row.
+    const drop = soft ? toothRow * (1 - toothRow) * 4 : 0;
+    const band = 0.01 + 0.06 * drop + 0.07 * outside;
     const below = 1 - smoothstep(split - band, split + band, y);
     const front = smoothstep(hinge.z - 0.05, hinge.z + 0.33, z);
     const muzzle = 1 - smoothstep(0.55, 0.75, x);
     const throat = smoothstep(3.55, 3.75, y);
-    weights[i] = below * front * muzzle * throat;
+    return below * front * muzzle * throat;
+  };
+  // The main mesh is by far the largest part.
+  const size = new Map<number, number>();
+  for (const part of parts) size.set(part, (size.get(part) ?? 0) + 1);
+  const main = [...size].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+  const middle = new Map<number, THREE.Vector3>();
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] === main) continue;
+    const m = middle.get(parts[i]) ?? middle.set(parts[i], new THREE.Vector3()).get(parts[i])!;
+    m.x += pos.getX(i) / size.get(parts[i])!;
+    m.y += pos.getY(i) / size.get(parts[i])!;
+    m.z += pos.getZ(i) / size.get(parts[i])!;
+  }
+  const weights = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const m = middle.get(parts[i]);
+    weights[i] = m ? weight(m.x, m.y, m.z, false) : weight(pos.getX(i), pos.getY(i), pos.getZ(i), true);
   }
   return new THREE.BufferAttribute(weights, 1);
 }
@@ -761,47 +891,227 @@ function outerVertices(geometry: THREE.BufferGeometry, rig: Rig): number[] {
 /**
  * The Lab's tongue is its own part of the mesh, sitting between the lower tooth rows. Returns
  * 0 at its root to 1 at its tip, 0 off the tongue, or null if no such part turns up.
+ * Also sets the whole tongue's jaw weight to 1, so it rides the jaw as one piece.
  */
-function labradorTongueWeights(geometry: THREE.BufferGeometry): THREE.BufferAttribute | null {
+function labradorTongueWeights(geometry: THREE.BufferGeometry, parts: Int32Array, jaw: THREE.BufferAttribute): THREE.BufferAttribute | null {
   const pos = geometry.attributes.position;
-  const index = geometry.index;
-  if (!index) return null;
-  // Group vertices into connected parts. Welding by position first joins faces split at UV seams.
-  const parent = Int32Array.from({ length: pos.count }, (_, i) => i);
-  const find = (a: number) => {
-    while (parent[a] !== a) a = parent[a] = parent[parent[a]];
-    return a;
-  };
-  const union = (a: number, b: number) => {
-    parent[find(a)] = find(b);
-  };
-  const welded = new Map<string, number>();
-  for (let i = 0; i < pos.count; i++) {
-    const key = `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
-    const other = welded.get(key);
-    if (other === undefined) welded.set(key, i);
-    else union(i, other);
-  }
-  for (let t = 0; t < index.count; t += 3) {
-    union(index.getX(t), index.getX(t + 1));
-    union(index.getX(t), index.getX(t + 2));
-  }
   // The tongue is the largest part that lies wholly inside the mouth. Teeth fit too, but they're smaller.
   const inMouth = (i: number) => Math.abs(pos.getX(i)) < 0.35 && pos.getY(i) > 3.8 && pos.getY(i) < 4.35 && pos.getZ(i) > 3.7 && pos.getZ(i) < 4.45;
   const size = new Map<number, number>();
   const outside = new Set<number>();
   for (let i = 0; i < pos.count; i++) {
-    const root = find(i);
-    size.set(root, (size.get(root) ?? 0) + 1);
-    if (!inMouth(i)) outside.add(root);
+    size.set(parts[i], (size.get(parts[i]) ?? 0) + 1);
+    if (!inMouth(i)) outside.add(parts[i]);
   }
   let tongue = -1;
-  for (const [root, n] of size) if (!outside.has(root) && n > (size.get(tongue) ?? 0)) tongue = root;
+  for (const [part, n] of size) if (!outside.has(part) && n > (size.get(tongue) ?? 0)) tongue = part;
   if (tongue < 0) return null;
   const weights = new Float32Array(pos.count);
   // The front half slides out whole and keeps its shape. The back half stretches.
-  for (let i = 0; i < pos.count; i++) if (find(i) === tongue) weights[i] = smoothstep(3.85, 4.15, pos.getZ(i));
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== tongue) continue;
+    weights[i] = smoothstep(3.85, 4.15, pos.getZ(i));
+    jaw.setX(i, 1);
+  }
+  geometry.setAttribute('aTongueTip', tongueTipShape(geometry, parts, tongue));
   return new THREE.BufferAttribute(weights, 1);
+}
+
+/**
+ * The upper canines, for the vampire trick: the two longest upper teeth near the front of the
+ * mouth. Each is a separate part. Returns each canine vertex's root (the top middle of its tooth)
+ * and a 1, or null if there aren't two.
+ */
+function labradorFangs(geometry: THREE.BufferGeometry, parts: Int32Array, jaw: THREE.BufferAttribute): THREE.BufferAttribute | null {
+  const pos = geometry.attributes.position;
+  const teeth = new Map<number, { n: number; x: number; z: number; low: number; high: number; zLow: number; zHigh: number; upper: boolean }>();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const t = teeth.get(parts[i]) ?? { n: 0, x: 0, z: 0, low: Infinity, high: -Infinity, zLow: Infinity, zHigh: -Infinity, upper: jaw.getX(i) < 0.5 };
+    t.n++;
+    t.x += x;
+    t.z += z;
+    t.low = Math.min(t.low, y);
+    t.high = Math.max(t.high, y);
+    t.zLow = Math.min(t.zLow, z);
+    t.zHigh = Math.max(t.zHigh, z);
+    teeth.set(parts[i], t);
+  }
+  // Upper teeth near the front, a real 3D tooth (the flat whisker cards are thin in z), longest first.
+  const canines = [...teeth]
+    .filter(([, t]) => {
+      const x = Math.abs(t.x / t.n);
+      const z = t.z / t.n;
+      return t.n < 300 && t.upper && x > 0.1 && x < 0.25 && z > 4.3 && z < 4.52 && t.zHigh - t.zLow > 0.05;
+    })
+    .sort((a, b) => b[1].high - b[1].low - (a[1].high - a[1].low))
+    .slice(0, 2);
+  if (canines.length < 2) return null;
+  const fang = new Float32Array(pos.count * 4);
+  for (let i = 0; i < pos.count; i++) {
+    const c = canines.find(([part]) => part === parts[i]);
+    if (!c) continue;
+    const t = c[1];
+    fang.set([t.x / t.n, t.high, t.z / t.n, 1], i * 4);
+  }
+  return new THREE.BufferAttribute(fang, 4);
+}
+
+/**
+ * The model sculpts the floor of the mouth as a second tongue, lying right under the separate
+ * tongue part, so at rest the two overlap. When the real tongue goes out, the copy stayed behind
+ * and the outgoing tongue cut through it. This returns, for each main-mesh vertex inside the
+ * tongue's footprint, how far it must sink to reach the flat floor of the mouth (y 3.8 or so).
+ */
+function labradorMouthFloor(geometry: THREE.BufferGeometry, parts: Int32Array): THREE.BufferAttribute {
+  const BIN = 0.05;
+  const pos = geometry.attributes.position;
+  const tongueW = geometry.attributes.aTongue;
+  const jaw = geometry.attributes.aJaw;
+  const size = new Map<number, number>();
+  for (const part of parts) size.set(part, (size.get(part) ?? 0) + 1);
+  const main = [...size].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+  let tongue = -1;
+  for (let i = 0; i < pos.count && tongue < 0; i++) if (tongueW.getX(i) > 0) tongue = parts[i];
+  // The real tongue's half-width and top along its length.
+  const halfW = new Map<number, number>();
+  const top = new Map<number, number>();
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== tongue) continue;
+    const b = Math.floor(pos.getZ(i) / BIN);
+    halfW.set(b, Math.max(halfW.get(b) ?? 0, Math.abs(pos.getX(i))));
+    top.set(b, Math.max(top.get(b) ?? -Infinity, pos.getY(i)));
+  }
+  // The floor: the lowest main-mesh point near the midline, on the jaw, in each bin.
+  const floor = new Map<number, number>();
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== main || jaw.getX(i) < 0.99 || Math.abs(pos.getX(i)) > 0.12) continue;
+    const b = Math.floor(pos.getZ(i) / BIN);
+    if (!halfW.has(b) || pos.getY(i) < 3.7) continue;
+    floor.set(b, Math.min(floor.get(b) ?? Infinity, pos.getY(i)));
+  }
+  const drop = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== main || jaw.getX(i) < 0.99) continue;
+    const z = pos.getZ(i);
+    const b = Math.floor(z / BIN);
+    const w = halfW.get(b);
+    const f = floor.get(b);
+    if (w === undefined || f === undefined || z < 3.95) continue;
+    const y = pos.getY(i);
+    if (y > (top.get(b) ?? y) + 0.02 || y <= f) continue;
+    // Full drop inside the footprint, easing off at its edge so the gums don't move.
+    const x = Math.abs(pos.getX(i));
+    drop[i] = (y - f - 0.005) * (1 - smoothstep(w - 0.06, w - 0.01, x));
+  }
+  return new THREE.BufferAttribute(drop, 1);
+}
+
+/**
+ * The Lab's tongue is a shell open underneath, where it rests on the floor of the mouth. Stuck
+ * out, you could see up into it, and through it to the mouth floor left behind. This returns a
+ * copy of the geometry with an underside added: the tongue's upper surface, flattened onto the
+ * rim of the shell and facing down. It copies every attribute, so it moves with the tongue.
+ */
+function withTongueUnderside(geometry: THREE.BufferGeometry, parts: Int32Array): { geometry: THREE.BufferGeometry; parts: Int32Array } {
+  const BIN = 0.02;
+  const pos = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  const tongueW = geometry.attributes.aTongue;
+  const index = geometry.index!;
+  let tongue = -1;
+  for (let i = 0; i < pos.count && tongue < 0; i++) if (tongueW.getX(i) > 0) tongue = parts[i];
+  // The bottom of the shell along its length, in bins of BIN.
+  const low = new Map<number, number>();
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== tongue) continue;
+    const b = Math.floor(pos.getZ(i) / BIN);
+    low.set(b, Math.min(low.get(b) ?? Infinity, pos.getY(i)));
+  }
+  // Copy the upper surface: tongue vertices facing up, and the triangles made only of them.
+  const copy = new Map<number, number>();
+  for (let i = 0; i < pos.count; i++) if (parts[i] === tongue && normal.getY(i) > 0.3) copy.set(i, pos.count + copy.size);
+  const tris: number[] = [];
+  for (let t = 0; t < index.count; t += 3) {
+    const [a, b, c] = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
+    // Reversed, so the copy faces down.
+    if (copy.has(a) && copy.has(b) && copy.has(c)) tris.push(copy.get(a)!, copy.get(c)!, copy.get(b)!);
+  }
+  const total = pos.count + copy.size;
+  const out = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(geometry.attributes)) {
+    const size = attr.itemSize;
+    const data = new Float32Array(total * size);
+    const get = (i: number, c: number) => [attr.getX(i), attr.getY(i), attr.getZ(i), attr.getW(i)][c];
+    for (let i = 0; i < pos.count; i++) for (let c = 0; c < size; c++) data[i * size + c] = get(i, c);
+    for (const [from, to] of copy) for (let c = 0; c < size; c++) data[to * size + c] = get(from, c);
+    out.setAttribute(name, new THREE.BufferAttribute(data, size));
+  }
+  const p = out.attributes.position;
+  const n = out.attributes.normal;
+  const tip = out.attributes.aTongueTip;
+  for (const [from, to] of copy) {
+    // Flatten onto the rim, a little narrower to match the shell's sides there.
+    p.setXYZ(to, pos.getX(from) * 0.8, (low.get(Math.floor(pos.getZ(from) / BIN)) ?? pos.getY(from)) + 0.004, pos.getZ(from));
+    n.setXYZ(to, 0, -1, 0);
+    // Thinning the tip squeezes the upper surface down. Squeeze the underside up to meet it.
+    if (tip) tip.setXY(to, tip.getX(to) * 0.8, -tip.getY(to));
+  }
+  const indices = new Uint32Array(index.count + tris.length);
+  for (let i = 0; i < index.count; i++) indices[i] = index.getX(i);
+  indices.set(tris, index.count);
+  out.setIndex(new THREE.BufferAttribute(indices, 1));
+  const outParts = new Int32Array(total);
+  outParts.set(parts);
+  outParts.fill(tongue, pos.count);
+  return { geometry: out, parts: outParts };
+}
+
+/**
+ * How far to move each tongue vertex, in x and y, to reshape the tip for showing outside the
+ * mouth. The model's tip is a block about 0.12 thick that rounds off only in its last 0.07,
+ * so a tongue sticking out looked square. This rounds the last TIP_ROUND of the outline into a
+ * U, and thins the front toward an edge.
+ */
+function tongueTipShape(geometry: THREE.BufferGeometry, parts: Int32Array, tongue: number): THREE.BufferAttribute {
+  const TIP_ROUND = 0.2;
+  const BIN = 0.02;
+  const pos = geometry.attributes.position;
+  // The tongue's half-width and middle height along its length, in bins of BIN.
+  const halfW = new Map<number, number>();
+  const low = new Map<number, number>();
+  const high = new Map<number, number>();
+  let tipZ = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== tongue) continue;
+    const b = Math.floor(pos.getZ(i) / BIN);
+    halfW.set(b, Math.max(halfW.get(b) ?? 0, Math.abs(pos.getX(i))));
+    low.set(b, Math.min(low.get(b) ?? Infinity, pos.getY(i)));
+    high.set(b, Math.max(high.get(b) ?? -Infinity, pos.getY(i)));
+    tipZ = Math.max(tipZ, pos.getZ(i));
+  }
+  const start = tipZ - TIP_ROUND;
+  const startHalfW = halfW.get(Math.floor(start / BIN)) ?? 0.2;
+  const shape = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    if (parts[i] !== tongue) continue;
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const b = Math.floor(z / BIN);
+    // A semicircle from the start of the rounding to the tip.
+    const u = Math.min(1, Math.max(0, (z - start) / TIP_ROUND));
+    const target = startHalfW * Math.sqrt(1 - u * u);
+    const scale = Math.min(1, target / Math.max(halfW.get(b) ?? 1, 1e-3));
+    shape[i * 2] = x * (scale - 1);
+    // Squeeze toward the middle height, down to a third of the thickness at the tip.
+    const mid = ((low.get(b) ?? y) + (high.get(b) ?? y)) / 2;
+    const thin = 1 - 0.65 * smoothstep(tipZ - 0.3, tipZ, z);
+    shape[i * 2 + 1] = (y - mid) * (thin - 1);
+  }
+  return new THREE.BufferAttribute(shape, 2);
 }
 
 /** Smooth value noise in [-1, 1]. */

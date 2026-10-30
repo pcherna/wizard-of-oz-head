@@ -43,6 +43,7 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | `f` | Back to fullscreen |
 | `u` | Flip the picture upside down |
 | `k` | Show or hide the keystone handles |
+| `a` | Play the last dog trick again, for testing |
 | `r` | Reset the keystone, while the handles show |
 
 Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`, or to `MIC_TOGGLE_KEYS` for muting.
@@ -76,13 +77,14 @@ Each press of the trick button plays the next trick in this order, then starts o
 13. Wink: both eyes flare bright, then one goes dark for a moment, with a sparkle.
 14. Nap: the poppy field. Twice the head sinks and lolls to one side, then jerks partway back up. The third time it stays down, snoring with "Z"s rising, then wakes with a snort and a "huh?!".
 15. Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
-16. Monkeys: flying monkeys swoop across the stage, screeching. The dog looks up and follows them, mouth open.
-17. Melt: the witch cries "Look what you've done! I'm melting! Melting!" as the head writhes and drips down into a puddle in clouds of steam. It lies there through "Oh, what a world", then rises back up whole.
-18. Spin: turns its head all the way around, like a possessed doll.
+16. Vampire: the head lowers, then rises with blood-red eyes and the upper canines growing into long fangs, to the opening of Bach's Toccata and Fugue in D minor on a pipe organ.
+17. Monkeys: flying monkeys swoop across the stage in front of the dog, screeching. The dog looks up and follows them, mouth open.
+18. Melt: the witch cries "Look what you've done! I'm melting! Melting!" as the head writhes and drips down into a puddle in clouds of steam. It lies there through "Oh, what a world", then rises back up whole.
+19. Spin: turns its head all the way around, like a possessed doll.
 
-A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
+A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once. Unmuting the mic stops any trick: the head returns to rest in 0.3 seconds, and the trick's sounds fade out. Fire, steam and lightning carry on. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
 
-Only the Labrador has a tongue, so the other heads skip blep, lick and pant. The model has no back to its skull, so the inside of the face flashes past during the spin. The spin is fast, so the gap shows for only about a sixth of a second.
+Only the Labrador has a tongue and canine teeth, so the other heads skip blep, lick, pant and vampire. The model has no back to its skull, so the inside of the face flashes past during the spin. The spin is fast, so the gap shows for only about a sixth of a second.
 
 To check a pose, add `?trick=lick&at=0.8` to the URL. It holds that trick at 0.8 seconds in.
 
@@ -90,7 +92,7 @@ The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from t
 
 The melt plays the witch's lines from `public/sfx/melt.wav`, in place of its own sound. The melt is timed to that clip: the head starts melting at "I'm melting!", 1.3 seconds in, and re-forms after 7.4 seconds, when she finishes. A different clip needs new times in `MELT_LINES` and the melt trick in `src/display/tricks.ts`. Without the file, the melt plays a synthesized sizzle and wail on the same timeline.
 
-The hiccups can use a recorded "hic" in place of the synthesized one. Save one hiccup as `public/sfx/hic.mp3` or `public/sfx/hic.wav`, with the sound starting right at the beginning of the file. It plays at each of the four jolts, a little faster or slower each time.
+The hiccups use recorded "hic"s from `public/sfx/hic-1.wav`, `hic-2.wav` and so on, numbered from 1 with no gaps. Each jolt plays one at random, never the same one twice in a row, a little faster or slower each time. Each file must start right at the sound, so it lands on the jolt. Without the files, the hiccups use a synthesized "hic".
 
 ### Autopilot
 

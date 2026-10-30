@@ -26,6 +26,8 @@ export class Sfx {
   private brown: AudioBuffer;
   private bus: Record<SoundName, GainNode>;
   private tricks: TrickSounds;
+  /** One gain per trick played recently, for stopTricks() to fade. */
+  private takes: GainNode[] = [];
   /** The operator's effects volume, shared by all the sounds. */
   private volume: GainNode;
 
@@ -47,9 +49,7 @@ export class Sfx {
         if (buf) this.samples[name] = buf;
       });
     }
-    loadSample(ctx, '/sfx/hic.mp3')
-      .then((buf) => buf ?? loadSample(ctx, '/sfx/hic.wav'))
-      .then((buf) => (this.tricks.hicSample = buf));
+    this.loadHics(1);
     for (const trick of TRICKS.filter((tr) => tr.clip)) {
       loadSample(ctx, `/sfx/${trick.name}.mp3`)
         .then((buf) => buf ?? loadSample(ctx, `/sfx/${trick.name}.wav`))
@@ -57,6 +57,15 @@ export class Sfx {
           if (buf) this.clips[trick.name] = buf;
         });
     }
+  }
+
+  /** Loads public/sfx/hic-1.wav, hic-2.wav and so on, until one is missing. */
+  private loadHics(n: number) {
+    loadSample(this.ctx, `/sfx/hic-${n}.wav`).then((buf) => {
+      if (!buf) return;
+      this.tricks.hicSamples.push(buf);
+      this.loadHics(n + 1);
+    });
   }
 
   setVolume(level: number) {
@@ -68,15 +77,28 @@ export class Sfx {
    * Returns how long a 'first' clip plays before the head should move, or 0.
    */
   trick(name: TrickName, dir: number): number {
+    // Each trick plays through its own gain, so stopTricks() can fade it out.
+    const take = new GainNode(this.ctx);
+    take.connect(this.bus.trick);
+    this.takes.push(take);
+    // Older takes have long finished. Dropping them only lets them be collected.
+    if (this.takes.length > 8) this.takes.shift();
     const clip = this.clips[name];
     if (!clip) {
-      this.tricks.play(name, dir);
+      this.tricks.play(name, dir, take);
       return 0;
     }
     const src = new AudioBufferSourceNode(this.ctx, { buffer: clip });
-    src.connect(new GainNode(this.ctx, { gain: CLIP_BOOST })).connect(this.bus.trick);
+    src.connect(new GainNode(this.ctx, { gain: CLIP_BOOST })).connect(take);
     src.start();
     return TRICKS.find((tr) => tr.name === name)?.clip === 'first' ? clip.duration : 0;
+  }
+
+  /** Quickly fades out every trick sound still playing, clips included. Fire, steam and thunder carry on. */
+  stopTricks() {
+    const t = this.ctx.currentTime;
+    for (const take of this.takes) take.gain.setTargetAtTime(0, t, 0.03);
+    this.takes = [];
   }
 
   thunder() {

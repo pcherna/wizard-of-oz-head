@@ -111,8 +111,8 @@ function trigger(effect: EffectName) {
   } else if (effect === 'lightning') {
     lightning.strike(clock);
   } else if (head) {
-    // Each press plays the next trick, skipping tongue tricks on heads without a tongue.
-    const tricks = TRICKS.filter((tr) => head!.hasTongue || !tr.tongue);
+    // Each press plays the next trick, skipping tricks this head can't do.
+    const tricks = TRICKS.filter(canDo);
     playTrick(tricks[nextTrick++ % tricks.length]);
   }
 }
@@ -120,8 +120,17 @@ function trigger(effect: EffectName) {
 /** Cues still waiting from the current trick. A new trick cancels them, so skipping past a lunge doesn't strike lightning. */
 let cueTimers: number[] = [];
 
+/** Only the Labrador has a separate tongue and canines, for the tricks that need them. */
+function canDo(trick: Trick): boolean {
+  return !!head && (head.hasTongue || !trick.tongue) && (head.hasFangs || !trick.fangs);
+}
+
+/** The trick that played last, for the A key to repeat. */
+let lastTrick: Trick | null = null;
+
 function playTrick(trick: Trick) {
   if (!head) return;
+  lastTrick = trick;
   const dir = Math.random() < 0.5 ? -1 : 1;
   // A clip such as "Squirrel!" may play first. Then the head moves when it ends.
   const lead = sfx?.trick(trick.name, dir) ?? 0;
@@ -156,7 +165,7 @@ function noteActivity() {
 function autopilot() {
   const wait = store.value.autopilotSec;
   if (wait <= 0 || !head || clock - lastActivity < wait * autoJitter) return;
-  const choices = TRICKS.filter((tr) => tr.auto && tr !== lastAuto && (head!.hasTongue || !tr.tongue));
+  const choices = TRICKS.filter((tr) => tr.auto && tr !== lastAuto && canDo(tr));
   lastAuto = choices[Math.floor(Math.random() * choices.length)];
   playTrick(lastAuto);
   noteActivity();
@@ -204,7 +213,15 @@ function setMicMuted(muted: boolean) {
   noteActivity();
   micMuted = muted;
   cue.play(muted);
-  if (!muted) micOpensAt = clock + VOICE.unmuteHoldSec;
+  if (!muted) {
+    micOpensAt = clock + VOICE.unmuteHoldSec;
+    // The performer is about to speak, so any trick gets out of the way. Fire, steam and lightning carry on.
+    head?.cancelTrick(clock);
+    sfx?.stopTricks();
+    cueTimers.forEach(clearTimeout);
+    cueTimers = [];
+    monkeys.dismiss(clock);
+  }
   voice?.setMuted(muted);
   socket.send({ type: 'mic', muted });
 }
@@ -218,6 +235,12 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === 'f' || e.key === 'F') {
     enterFullscreen().catch(() => {});
+    return;
+  }
+  // Testing: play the last trick again, without moving the trick button's place in its cycle.
+  if ((e.key === 'a' || e.key === 'A') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    noteActivity();
+    if (lastTrick) playTrick(lastTrick);
     return;
   }
   // Projector fit. Skip Cmd-R and friends, so a reload doesn't also reset the corners.

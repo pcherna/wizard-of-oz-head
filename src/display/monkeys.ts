@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 
 /**
- * The flock flies between the organ backdrop (z -3) and the back of the head (about z -0.8 at
- * show size), so the monkeys always pass behind the head, never through it.
+ * The flock flies between the dog's nose (about z 1.5 at show size) and the camera (z 6), so the
+ * monkeys pass in front of the head, never through it.
  */
-const MONKEY_Z_NEAR = -1.3;
-const MONKEY_Z_FAR = -2.6;
+const MONKEY_Z_NEAR = 2.8;
+const MONKEY_Z_FAR = 1.9;
+/** How long dismissed monkeys take to fade out. */
+const DISMISS_SEC = 0.3;
 /** Seconds after launch that each monkey sets off. */
 const DEPARTURES = [0, 0.3, 0.55, 0.9, 1.25];
 
@@ -20,6 +22,8 @@ interface Flyer {
   path: [THREE.Vector3, THREE.Vector3, THREE.Vector3];
   flapHz: number;
   phase: number;
+  /** When dismiss() started fading this monkey out. */
+  fadeAt: number;
 }
 
 /**
@@ -36,7 +40,7 @@ export class Monkeys {
     const up = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(drawMonkey(true)), transparent: true, depthWrite: false });
     const down = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(drawMonkey(false)), transparent: true, depthWrite: false });
     this.flyers = DEPARTURES.map(() => {
-      const flyer = { up: up.clone(), down: down.clone(), start: Infinity, seconds: 1, flapHz: 4, phase: 0 };
+      const flyer = { up: up.clone(), down: down.clone(), start: Infinity, seconds: 1, flapHz: 4, phase: 0, fadeAt: Infinity };
       const sprite = new THREE.Sprite(flyer.up);
       sprite.visible = false;
       this.group.add(sprite);
@@ -48,25 +52,38 @@ export class Monkeys {
     this.flyers.forEach((f, i) => {
       const z = MONKEY_Z_NEAR - Math.random() * (MONKEY_Z_NEAR - MONKEY_Z_FAR);
       // Start and end just off screen at this depth.
-      const edge = this.halfWidth(z) + 0.8;
-      const y0 = 1.2 + Math.random() * 0.8;
+      // Heights and size scale with the view at this depth, so the swoop looks the same on screen at any depth.
+      const view = this.halfHeight(z);
+      const edge = this.halfWidth(z) + 0.3 * view;
+      const y0 = (0.48 + Math.random() * 0.32) * view;
       f.path[0].set(-dir * edge, y0, z);
-      f.path[1].set(-dir * edge * 0.2, -0.4 + Math.random() * 0.8, z);
-      f.path[2].set(dir * edge, y0 + 0.2 + Math.random() * 0.6, z);
+      f.path[1].set(-dir * edge * 0.2, (-0.16 + Math.random() * 0.32) * view, z);
+      f.path[2].set(dir * edge, y0 + (0.08 + Math.random() * 0.24) * view, z);
       f.start = t + DEPARTURES[i];
       f.seconds = 2.6 + Math.random() * 0.8;
       f.flapHz = 4 + Math.random() * 1.5;
       f.phase = Math.random() * 6;
-      // Farther than the head, so drawn larger to keep a similar size on screen.
-      f.sprite.scale.setScalar(0.75 + (z - MONKEY_Z_FAR) * 0.15);
+      f.fadeAt = Infinity;
+      f.up.opacity = f.down.opacity = 1;
+      f.sprite.scale.setScalar((0.34 + Math.random() * 0.08) * view);
     });
+  }
+
+  /** Fades out the monkeys in flight over DISMISS_SEC, and cancels any yet to set off. */
+  dismiss(t: number) {
+    for (const f of this.flyers) {
+      if (t < f.start) f.start = Infinity;
+      else f.fadeAt = Math.min(f.fadeAt, t);
+    }
   }
 
   update(t: number) {
     for (const f of this.flyers) {
       const k = (t - f.start) / f.seconds;
-      f.sprite.visible = k >= 0 && k <= 1;
+      const fade = 1 - Math.max(0, t - f.fadeAt) / DISMISS_SEC;
+      f.sprite.visible = k >= 0 && k <= 1 && fade > 0;
       if (!f.sprite.visible) continue;
+      f.up.opacity = f.down.opacity = Math.min(1, fade);
       bezier(f.path, k, this.p);
       bezier(f.path, Math.min(1, k + 0.01), this.q);
       const beat = Math.sin(f.phase + (t - f.start) * 2 * Math.PI * f.flapHz);
@@ -80,10 +97,15 @@ export class Monkeys {
     }
   }
 
+  /** Half the visible height at depth z. */
+  private halfHeight(z: number): number {
+    const c = this.camera;
+    return (c.position.z - z) * Math.tan((c.fov * Math.PI) / 360);
+  }
+
   /** Half the visible width at depth z. */
   private halfWidth(z: number): number {
-    const c = this.camera;
-    return (c.position.z - z) * Math.tan((c.fov * Math.PI) / 360) * c.aspect;
+    return this.halfHeight(z) * this.camera.aspect;
   }
 }
 

@@ -19,7 +19,8 @@ export type TrickName =
   | 'monkeys'
   | 'lunge'
   | 'hiccups'
-  | 'bubble';
+  | 'bubble'
+  | 'vampire';
 
 /** Things a trick sets off around the head. */
 export type Cue = 'steam' | 'wideSteam' | 'flare' | 'douse' | 'lightning' | 'monkeys' | 'pop';
@@ -68,6 +69,10 @@ export interface Pose {
   zzz: number;
   /** Size of a chewing-gum bubble at the mouth, 0 (none) to 1. */
   bubble: number;
+  /** Grows the upper canines into long fangs, 0 to 1. */
+  fangs: number;
+  /** Turns the eyes blood red, 0 to 1. */
+  eyeRed: number;
 }
 
 export interface Trick {
@@ -75,6 +80,8 @@ export interface Trick {
   seconds: number;
   /** Needs a separate tongue in the model. Only the Labrador has one. */
   tongue: boolean;
+  /** Needs separate upper canines in the model. Only the Labrador has them. */
+  fangs?: boolean;
   /** [seconds from the start, cue] pairs. */
   cues?: [number, Cue][];
   /**
@@ -88,6 +95,12 @@ export interface Trick {
   pose(t: number, p: Pose, dir: number): void;
 }
 
+/** Blends a pose toward rest: k 1 leaves it, k 0 is rest. */
+export function blendToRest(p: Pose, k: number) {
+  const rest = restPose();
+  for (const key of Object.keys(p) as (keyof Pose)[]) p[key] = rest[key] + (p[key] - rest[key]) * k;
+}
+
 export function restPose(): Pose {
   return {
     yaw: 0, pitch: 0, roll: 0, idle: 1,
@@ -96,6 +109,7 @@ export function restPose(): Pose {
     eyeOpen: 1, winkL: 0, winkR: 0, eyeGlow: 1, gazeX: 0,
     rise: 0, spray: 0, ghost: 0,
     melt: 0, colors: 0, lunge: 0, zzz: 0, bubble: 0,
+    fangs: 0, eyeRed: 0,
   };
 }
 
@@ -109,7 +123,7 @@ export const HICCUP_TIMES = [0.15, 0.85, 1.35, 2.3];
 /** When the gum bubble pops. */
 export const BUBBLE_POP = 3.25;
 /** When the witch speaks in public/sfx/melt.wav, [start, end] in seconds, measured from its pauses. */
-const MELT_LINES: [number, number][] = [[0.03, 1.03], [1.29, 2.11], [2.52, 3.53], [3.79, 4.6]];
+const MELT_LINES: [number, number][] = [[0.03, 1.03], [1.29, 2.11], [2.52, 3.53], [3.79, 7.4]];
 /** When the napping dog wakes with a start. trick-sounds.ts snores until then. */
 export const NAP_WAKE = 5.2;
 
@@ -165,8 +179,10 @@ export const TRICKS: Trick[] = [
       const e = hold(t, 0, 0.2, 1.4, 1.7);
       p.jaw = 0.75;
       p.jawMix = e;
-      p.tongueOut = 1.4 * hold(t, 0.1, 0.35, 1.2, 1.5);
-      p.tongueCurl = keys(t, [[0.3, 0], [0.55, 1.3], [0.68, 1.5], [0.78, 1.25], [0.92, 1.55], [1.08, 1.3], [1.35, 0]]);
+      // Far enough out that the broad front of the tongue clears the upper lip, then curled up
+      // to nearly upright, so the body of the tongue presses flat against the nose, not just its edge.
+      p.tongueOut = 1.8 * hold(t, 0.1, 0.35, 1.2, 1.5);
+      p.tongueCurl = keys(t, [[0.3, 0], [0.55, 1.25], [0.68, 1.45], [0.78, 1.2], [0.92, 1.5], [1.08, 1.25], [1.35, 0]]);
       const side = dir * keys(t, [[0.45, 0], [0.62, 0.09], [0.86, -0.08], [1.05, 0.02], [1.25, 0]]);
       p.tongueSide = side;
       p.yaw = 0.8 * side;
@@ -383,6 +399,25 @@ export const TRICKS: Trick[] = [
     },
   },
   {
+    // A vampire: the head lowers, then rises with the eyes turning blood red, the lips parting and
+    // the upper canines growing into long fangs, to the opening of Bach's Toccata and Fugue in D minor.
+    name: 'vampire',
+    seconds: 5,
+    tongue: false,
+    fangs: true,
+    pose(t, p, dir) {
+      const bare = hold(t, 0.6, 1.5, 3.8, 4.6);
+      p.fangs = hold(t, 0.7, 1.5, 3.8, 4.5);
+      p.eyeRed = hold(t, 0.5, 1.0, 3.9, 4.7);
+      p.pitch = keys(t, [[0, 0], [0.6, 0.2], [1.4, -0.12], [3.8, -0.1], [4.7, 0]]);
+      p.yaw = 0.18 * dir * Math.sin((t - 1.4) * 1.1) * hold(t, 1.4, 2.0, 3.6, 4.3);
+      p.jaw = 0.75;
+      p.jawMix = bare;
+      p.eyeGlow = keys(t, [[0, 1], [0.5, 0.4], [1.0, 2.2], [3.9, 2.2], [4.7, 1]]);
+      p.idle = 1 - hold(t, 0, 0.3, 4.3, 4.9);
+    },
+  },
+  {
     // Flying monkeys swoop across the backdrop, screeching. The dog looks up and follows them, mouth agape.
     name: 'monkeys',
     seconds: 4.6,
@@ -401,16 +436,18 @@ export const TRICKS: Trick[] = [
   },
   {
     // "I'm melting!" Timed to the witch's lines in public/sfx/melt.wav: the head writhes at "Look
-    // what you've done!", drips down into a puddle in clouds of steam through "I'm melting!
-    // Melting!", lies there through "Oh, what a world", then rises back up whole.
+    // what you've done!", sags a little through "I'm melting! Melting!", drips down into a puddle
+    // in clouds of steam through "Oh, what a world, what a world", then rises back up whole.
     name: 'melt',
     seconds: 8.8,
     tongue: false,
     clip: 'instead',
-    cues: [[0.3, 'steam'], [1.6, 'steam'], [2.8, 'steam'], [4.0, 'steam'], [5.4, 'steam']],
+    cues: [[0.3, 'steam'], [1.8, 'steam'], [3.6, 'steam'], [4.6, 'steam'], [5.6, 'steam'], [6.6, 'steam']],
     pose(t, p, dir) {
-      const melt = Math.pow(ease((t - 1.1) / 3.5), 1.6) * (1 - ease((t - 7.4) / 1.0));
-      const writhe = hold(t, 0.1, 0.5, 4.0, 4.8);
+      // Only a slight sag through "I'm melting! Melting!". The real melt comes with "Oh, what a
+      // world, what a world" (3.8 to 6.7 s), then it rises back up after she finishes at 7.4 s.
+      const melt = (0.15 * ease((t - 1.3) / 2.5) + 0.85 * Math.pow(ease((t - 3.8) / 2.9), 1.4)) * (1 - ease((t - 7.4) / 1.0));
+      const writhe = hold(t, 0.1, 0.5, 6.5, 7.2);
       // The jaw works on each of her lines, until the mouth has melted away.
       let talk = 0;
       for (const [a, b] of MELT_LINES) talk = Math.max(talk, hold(t, a, a + 0.08, b - 0.08, b));

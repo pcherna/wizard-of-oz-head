@@ -5,8 +5,9 @@ type Formant = [number, number, number];
 
 /** Synthesized sounds for the dog tricks. Each one is timed to its trick's poses in tricks.ts. */
 export class TrickSounds {
-  /** A recorded "hic", from public/sfx/hic.mp3 or .wav. It replaces the synthesized one. */
-  hicSample: AudioBuffer | null = null;
+  /** Recorded "hic"s, from public/sfx/hic-1.wav, hic-2.wav and so on. They replace the synthesized one. */
+  hicSamples: AudioBuffer[] = [];
+  private lastHic = -1;
 
   constructor(
     private ctx: BaseAudioContext,
@@ -14,8 +15,22 @@ export class TrickSounds {
     private white: AudioBuffer,
   ) {}
 
-  /** dir (+1 or -1) is the side the trick goes toward, for sounds that travel with it. */
-  play(name: TrickName, dir: number) {
+  /**
+   * Plays a trick's sound into `out`, so the caller can fade it all out at once. dir (+1 or -1)
+   * is the side the trick goes toward, for sounds that travel with it.
+   */
+  play(name: TrickName, dir: number, out: AudioNode) {
+    // Every node below connects at once, to this.out, so pointing it at `out` routes the lot.
+    const keep = this.out;
+    this.out = out;
+    try {
+      this.synth(name, dir);
+    } finally {
+      this.out = keep;
+    }
+  }
+
+  private synth(name: TrickName, dir: number) {
     const t = this.ctx.currentTime;
     switch (name) {
       case 'blep':
@@ -24,7 +39,7 @@ export class TrickSounds {
         this.shake(t);
         return this.douse(t + SHAKE_DOUSE);
       case 'lick':
-        return this.slurp(t + 0.3);
+        return this.slurp(t + 0.35);
       case 'tilt':
         return this.whine(t + 0.05, 650, 1000);
       case 'sneeze':
@@ -57,7 +72,54 @@ export class TrickSounds {
         return this.monkeys(t + 0.1, dir);
       case 'melt':
         return this.melt(t);
+      case 'vampire':
+        return this.toccata(t + 0.4);
     }
+  }
+
+  /**
+   * The opening of Bach's Toccata and Fugue in D minor on a pipe organ: the "A-G-A" mordent and
+   * its long A, a pause, then the run down from G to the low D. A church-sized reverb carries it.
+   */
+  private toccata(t: number) {
+    const [A, G, F, E, D, Cs] = [440, 392, 349.23, 329.63, 293.66, 277.18];
+    const notes: [number, number, number][] = [
+      [A, 0, 0.1], [G, 0.1, 0.1], [A, 0.2, 0.95],
+      [G, 1.35, 0.12], [F, 1.47, 0.12], [E, 1.59, 0.12], [D, 1.71, 0.12], [Cs, 1.83, 0.35], [D, 2.2, 1.4],
+    ];
+    const organ = new GainNode(this.ctx);
+    organ.connect(this.out);
+    const hall = new ConvolverNode(this.ctx, { buffer: this.churchImpulse() });
+    organ.connect(hall).connect(new GainNode(this.ctx, { gain: 0.5 })).connect(this.out);
+    for (const [hz, at, len] of notes) this.organNote(hz, t + at, len, organ);
+  }
+
+  /** One organ note: two ranks an octave apart, each with a few harmonics, and a breathy chiff as the pipe speaks. */
+  private organNote(hz: number, t: number, len: number, out: AudioNode) {
+    const env = new GainNode(this.ctx, { gain: 0 });
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.16, t + 0.025);
+    env.gain.setValueAtTime(0.16, t + len);
+    env.gain.linearRampToValueAtTime(0, t + len + 0.12);
+    env.connect(out);
+    for (const [mult, level] of [[0.5, 0.6], [1, 1], [2, 0.55], [3, 0.3], [4, 0.25], [6, 0.12], [8, 0.08]]) {
+      this.osc('sine', hz * mult, t, len + 0.15).connect(new GainNode(this.ctx, { gain: level })).connect(env);
+    }
+    this.noise(t, 0.05, { type: 'bandpass', frequency: hz * 4, Q: 2 }, [[0.005, 0.08], [0.05, 0]], out);
+  }
+
+  private church: AudioBuffer | null = null;
+
+  /** Three seconds of stereo noise fading out: a big stone church. Made once. */
+  private churchImpulse(): AudioBuffer {
+    if (this.church) return this.church;
+    const rate = this.ctx.sampleRate;
+    const buffer = this.ctx.createBuffer(2, 3 * rate, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buffer.getChannelData(ch);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    }
+    return (this.church = buffer);
   }
 
   /** A harp-like sweep through eight pentatonic notes, up or down. */
@@ -75,10 +137,15 @@ export class TrickSounds {
    * under it. Built sample by sample. Each one varies a little.
    */
   private hic(t: number) {
-    if (this.hicSample) {
-      // Each hiccup a little higher or lower, so four in a row don't sound copy-pasted.
-      const src = new AudioBufferSourceNode(this.ctx, { buffer: this.hicSample, playbackRate: 0.93 + Math.random() * 0.14 });
-      src.connect(this.env(t, [[0.001, 1], [this.hicSample.duration + 0.05, 1]]));
+    const n = this.hicSamples.length;
+    if (n > 0) {
+      // A different recording each time, never the same twice in a row, a little higher or lower.
+      let i = Math.floor(Math.random() * n);
+      if (n > 1 && i === this.lastHic) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n;
+      this.lastHic = i;
+      const buffer = this.hicSamples[i];
+      const src = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: 0.96 + Math.random() * 0.08 });
+      src.connect(this.env(t, [[0.001, 1], [buffer.duration + 0.05, 1]]));
       src.start(t);
       return;
     }
@@ -142,9 +209,9 @@ export class TrickSounds {
       whistle.connect(this.env(t + at + 0.6, [[0.08, 0.12], [0.3, 0.1], [0.4, 0]]));
     }
     const wake = t + NAP_WAKE;
-    this.noise(wake, 0.15, { type: 'bandpass', frequency: 900, Q: 1 }, [[0.005, 0.9], [0.15, 0]]);
+    this.noise(wake, 0.15, { type: 'bandpass', frequency: 900, Q: 1 }, [[0.005, 0.4], [0.15, 0]]);
     const uh: Formant[] = [[650, 4, 1], [1100, 5, 0.6]];
-    this.vowel(wake + 0.15, 0.25, [[0, 160], [0.25, 330]], uh, uh, 0.8, [[0.02, 0.6], [0.2, 0.5], [0.25, 0]]);
+    this.vowel(wake + 0.15, 0.25, [[0, 160], [0.25, 330]], uh, uh, 0.8, [[0.02, 0.28], [0.2, 0.22], [0.25, 0]]);
   }
 
   /** A rumbling inhale: a low buzz fluttering like a soft palate. */
@@ -184,16 +251,16 @@ export class TrickSounds {
 
   /**
    * Without the witch's clip: a frying sizzle with crackles and a falling wail as the head melts
-   * (1.1–4.6 s), a quieter sizzle from the puddle, then a rising sweep and a sparkle as it re-forms.
+   * (3.6–7 s), then a rising sweep and a sparkle as it re-forms.
    */
   private melt(t: number) {
-    this.noise(t + 1.1, 6.3, { type: 'highpass', frequency: 3500 }, [[0.6, 0.35], [3.5, 0.4], [4.5, 0.15], [6.3, 0]]);
+    this.noise(t + 3.6, 3.8, { type: 'highpass', frequency: 3500 }, [[0.6, 0.35], [3.1, 0.4], [3.8, 0]]);
     for (let i = 0; i < 40; i++) {
-      this.noise(t + 1.1 + Math.random() * 3.5, 0.02, { type: 'bandpass', frequency: 3000 + Math.random() * 3000, Q: 2 }, [[0.002, 0.6], [0.02, 0]]);
+      this.noise(t + 3.6 + Math.random() * 3.2, 0.02, { type: 'bandpass', frequency: 3000 + Math.random() * 3000, Q: 2 }, [[0.002, 0.6], [0.02, 0]]);
     }
     const oh: Formant[] = [[500, 4, 1], [900, 5, 0.5]];
     const oo: Formant[] = [[350, 4, 1], [700, 5, 0.5]];
-    this.vowel(t + 1.2, 3.2, [[0, 620], [0.7, 680], [3.2, 220]], oh, oo, 0.3, [[0.3, 0.3], [2.5, 0.25], [3.2, 0]], [5, 30]);
+    this.vowel(t + 3.8, 3.2, [[0, 620], [0.7, 680], [3.2, 220]], oh, oo, 0.3, [[0.3, 0.3], [2.5, 0.25], [3.2, 0]], [5, 30]);
     const band = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 300, Q: 1.5 });
     band.frequency.setValueAtTime(300, t + 7.4);
     band.frequency.exponentialRampToValueAtTime(3000, t + 8.4);
@@ -260,13 +327,49 @@ export class TrickSounds {
     }
   }
 
-  /** A wet slurp: noise through a resonant filter that sweeps up and back. */
+  /**
+   * A wet slurp: a smack as the tongue leaves the mouth, a gurgle of bubbles as it drags across
+   * the nose, and two smacks as it goes back in. Each bubble rings briefly at its own pitch and
+   * rises as it pops, the way real bubbles sound, and they come in uneven clusters. A little
+   * low slosh sits under them. Built sample by sample.
+   */
   private slurp(t: number) {
-    const band = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 700, Q: 5 });
-    band.frequency.setValueAtTime(700, t);
-    band.frequency.exponentialRampToValueAtTime(2600, t + 0.18);
-    band.frequency.exponentialRampToValueAtTime(600, t + 0.45);
-    this.noiseInto(t, 0.5, band, [[0.04, 1.4], [0.3, 1], [0.5, 0]]);
+    const rate = this.ctx.sampleRate;
+    const seconds = 0.85;
+    const d = new Float32Array(Math.round((seconds + 0.05) * rate));
+    let at = 0.02;
+    while (at < seconds - 0.05) {
+      // Clusters: sometimes a quick run of bubbles, sometimes a gap.
+      const swell = Math.sin((Math.PI * at) / seconds);
+      bubble(d, rate, at, 250 + Math.random() * 700, 0.012 + Math.random() * 0.02, (0.3 + Math.random() * 0.7) * swell);
+      at += Math.random() < 0.3 ? 0.03 + Math.random() * 0.05 : 0.006 + Math.random() * 0.018;
+    }
+    let lp = 0;
+    for (let i = 0; i < d.length; i++) {
+      lp += ((Math.random() * 2 - 1) - lp) * 0.05;
+      d[i] += lp * 0.6 * Math.sin((Math.PI * i) / d.length);
+    }
+    this.playSamples(d, t, 0.5);
+    // The smack as the tongue comes out, and two as it goes back in, about 1.2 s into the lick.
+    for (const at of [0, 0.88, 1.0]) this.smack(t + at);
+  }
+
+  /** A wet smack: a sharp click of parting lips, then a few small bubbles popping. */
+  private smack(t: number) {
+    const rate = this.ctx.sampleRate;
+    const d = new Float32Array(Math.round(0.08 * rate));
+    for (let i = 0; i < 0.004 * rate; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / rate / 0.0008);
+    for (let k = 0; k < 3; k++) bubble(d, rate, 0.003 + Math.random() * 0.03, 600 + Math.random() * 900, 0.006 + Math.random() * 0.008, 0.5 + Math.random() * 0.5);
+    this.playSamples(d, t, 0.45);
+  }
+
+  /** Plays samples made here at time t, at the given level. */
+  private playSamples(d: Float32Array<ArrayBuffer>, t: number, level: number) {
+    const buffer = this.ctx.createBuffer(1, d.length, this.ctx.sampleRate);
+    buffer.copyToChannel(d, 0);
+    const src = new AudioBufferSourceNode(this.ctx, { buffer });
+    src.connect(this.env(t, [[0.001, level], [buffer.duration, level]]));
+    src.start(t);
   }
 
   /** A questioning whine that rises, with a little vibrato. */
@@ -457,5 +560,19 @@ export class TrickSounds {
     last.connect(this.env(t, points, false, out));
     src.start(t, Math.random() * 2);
     src.stop(t + seconds + 0.05);
+  }
+}
+
+/**
+ * Adds one bubble to d: a tone at hz that rises as it pops and dies away over about `decay`
+ * seconds, starting at `at` seconds. Real bubbles ring like this as they form and burst.
+ */
+function bubble(d: Float32Array, rate: number, at: number, hz: number, decay: number, level: number) {
+  const start = Math.round(at * rate);
+  let phase = 0;
+  for (let i = 0; i < decay * 5 * rate && start + i < d.length; i++) {
+    const k = i / rate;
+    phase += (hz * (1 + (k / decay) * 0.6)) / rate;
+    d[start + i] += level * Math.exp(-k / decay) * Math.sin(2 * Math.PI * phase);
   }
 }
