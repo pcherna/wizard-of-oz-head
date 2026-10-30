@@ -3,6 +3,8 @@ import * as THREE from 'three';
 const fireFragment = /* glsl */ `
 uniform float uTime;
 uniform float uIntensity;
+/** 1 while the fire is doused, down to a few glowing coals. */
+uniform float uOut;
 uniform float uWidth;
 varying vec2 vUv;
 
@@ -40,6 +42,7 @@ void main() {
   // Red at the edges, yellow in the core. The edge mask keeps the tips crisp.
   // Orange-red even in the core. Only a flare pushes it toward yellow.
   vec3 col = vec3(min(1.0, 1.7 * f), 0.32 * pow(f, 2.2), 0.06 * pow(f, 5.0)) * smoothstep(0.0, 0.06, f) * (0.65 + 0.25 * h);
+  col *= 1.0 - 0.94 * uOut;
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -57,11 +60,12 @@ void main() {
 `;
 
 const emberFragment = /* glsl */ `
+uniform float uOut;
 varying float vLife;
 void main() {
   float d = length(gl_PointCoord - 0.5);
   float a = smoothstep(0.5, 0.0, d) * sin(vLife * 3.14159);
-  gl_FragColor = vec4(vec3(1.0, 0.55, 0.15) * a * 1.6, 1.0);
+  gl_FragColor = vec4(vec3(1.0, 0.55, 0.15) * a * 1.6 * (1.0 - 0.85 * uOut), 1.0);
 }
 `;
 
@@ -70,6 +74,8 @@ const FIRE_WIDTH = 2.8;
 const EMBERS = 160;
 const FLARE_PEAK = 1.6;
 const FLARE_DECAY_SEC = 0.9;
+/** How long a doused fire stays out before it relights. */
+const DOUSE_SEC = 1.3;
 
 /** A wide bed of flame under the head, plus rising embers. */
 export class Fire {
@@ -78,8 +84,11 @@ export class Fire {
   intensity = 1;
   private flareTarget = 0;
   private flare = 0;
-  private uniforms = { uTime: { value: 0 }, uIntensity: { value: 1 }, uWidth: { value: FIRE_WIDTH } };
-  private emberUniforms = { uPixelScale: { value: 800 } };
+  private uniforms = { uTime: { value: 0 }, uIntensity: { value: 1 }, uWidth: { value: FIRE_WIDTH }, uOut: { value: 0 } };
+  private emberUniforms = { uPixelScale: { value: 800 }, uOut: this.uniforms.uOut };
+  /** How far the fire is doused, 0 to 1, and how long it stays out before relighting. */
+  private out = 0;
+  private outLeft = 0;
   private emberPos = new Float32Array(EMBERS * 3);
   private emberLife = new Float32Array(EMBERS);
   private emberSpeed = new Float32Array(EMBERS);
@@ -118,6 +127,12 @@ export class Fire {
     this.group.add(embers);
   }
 
+  /** Puts the fire out at once, down to coals. It relights on its own after DOUSE_SEC. */
+  douse() {
+    this.outLeft = DOUSE_SEC;
+    this.flareTarget = 0;
+  }
+
   flareUp() {
     this.flareTarget = FLARE_PEAK;
   }
@@ -129,7 +144,12 @@ export class Fire {
   update(t: number, dt: number, base: number) {
     this.flareTarget *= Math.exp(-dt / FLARE_DECAY_SEC);
     this.flare += (this.flareTarget - this.flare) * (1 - Math.exp(-dt / 0.08));
-    this.intensity = base * (1 + this.flare);
+    this.outLeft -= dt;
+    const target = this.outLeft > 0 ? 1 : 0;
+    // Out in a blink, back over about a second.
+    this.out += (target - this.out) * (1 - Math.exp(-dt / (target > this.out ? 0.08 : 0.45)));
+    this.uniforms.uOut.value = this.out;
+    this.intensity = base * (1 + this.flare) * (1 - 0.9 * this.out);
     this.uniforms.uTime.value = t;
     this.uniforms.uIntensity.value = this.intensity;
 

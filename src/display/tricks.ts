@@ -12,7 +12,17 @@ export type TrickName =
   | 'squirrel'
   | 'wink'
   | 'ghost'
-  | 'spin';
+  | 'spin'
+  | 'melt'
+  | 'colors'
+  | 'nap'
+  | 'monkeys'
+  | 'lunge'
+  | 'hiccups'
+  | 'bubble';
+
+/** Things a trick sets off around the head. */
+export type Cue = 'steam' | 'wideSteam' | 'flare' | 'douse' | 'lightning' | 'monkeys' | 'pop';
 
 /** Offsets from the head's normal behavior. restPose() changes nothing. */
 export interface Pose {
@@ -48,6 +58,16 @@ export interface Pose {
   spray: number;
   /** Turns the head into a pale, see-through ghost, 0 to 1. */
   ghost: number;
+  /** Melts the head down into a puddle, 0 to 1. */
+  melt: number;
+  /** Steps through the Emerald City colors: 0 green, 1 purple, 2 yellow, 3 red, 4 green again. */
+  colors: number;
+  /** Moves the head toward the audience, in world units. */
+  lunge: number;
+  /** Floats "Z"s up from the head while above 0.5. */
+  zzz: number;
+  /** Size of a chewing-gum bubble at the mouth, 0 (none) to 1. */
+  bubble: number;
 }
 
 export interface Trick {
@@ -55,12 +75,15 @@ export interface Trick {
   seconds: number;
   /** Needs a separate tongue in the model. Only the Labrador has one. */
   tongue: boolean;
-  /** When the trick bursts the steam vents, in seconds from the start. */
-  steamAt?: number;
-  /** When the trick flares the fire, in seconds from the start. */
-  flareAt?: number;
-  /** Plays public/sfx/<name>.mp3 or .wav first, if one exists, and starts moving when it ends. */
-  clip?: boolean;
+  /** [seconds from the start, cue] pairs. */
+  cues?: [number, Cue][];
+  /**
+   * Looks for public/sfx/<name>.mp3 or .wav. 'first' plays it before the trick moves, and the
+   * trick starts when it ends. 'instead' plays it in place of the synthesized sound.
+   */
+  clip?: 'first' | 'instead';
+  /** Small enough for autopilot to play on its own. */
+  auto?: boolean;
   /** dir is +1 or -1, picked at random each time, for moves that go one way. */
   pose(t: number, p: Pose, dir: number): void;
 }
@@ -72,11 +95,23 @@ export function restPose(): Pose {
     tongueOut: 0, tongueCurl: 0, tongueSide: 0, tongueDroop: 0,
     eyeOpen: 1, winkL: 0, winkR: 0, eyeGlow: 1, gazeX: 0,
     rise: 0, spray: 0, ghost: 0,
+    melt: 0, colors: 0, lunge: 0, zzz: 0, bubble: 0,
   };
 }
 
 /** The Labrador's jaw as modeled, slightly open. Lower values close it. */
 const RELAXED_JAW = 0.65;
+
+/** When the shake's water hits the fire and puts it out. trick-sounds.ts hisses then. */
+export const SHAKE_DOUSE = 0.38;
+/** When each hiccup jolts, in seconds. trick-sounds.ts plays a "hic!" at each. */
+export const HICCUP_TIMES = [0.15, 0.85, 1.35, 2.3];
+/** When the gum bubble pops. */
+export const BUBBLE_POP = 3.25;
+/** When the witch speaks in public/sfx/melt.wav, [start, end] in seconds, measured from its pauses. */
+const MELT_LINES: [number, number][] = [[0.03, 1.03], [1.29, 2.11], [2.52, 3.53], [3.79, 4.6]];
+/** When the napping dog wakes with a start. trick-sounds.ts snores until then. */
+export const NAP_WAKE = 5.2;
 
 /** In the order the trick button plays them. */
 export const TRICKS: Trick[] = [
@@ -85,6 +120,7 @@ export const TRICKS: Trick[] = [
     name: 'blep',
     seconds: 2.1,
     tongue: true,
+    auto: true,
     pose(t, p) {
       const e = hold(t, 0, 0.25, 1.6, 1.95);
       const out = hold(t, 0.1, 0.4, 1.5, 1.85);
@@ -100,10 +136,13 @@ export const TRICKS: Trick[] = [
     },
   },
   {
-    // A wet-dog shake, with the jowls flapping and water flying off.
+    // A wet-dog shake, with the jowls flapping and water flying off. The water puts the fire out
+    // in a hiss of steam, and it relights a moment later.
     name: 'shake',
     seconds: 1.4,
     tongue: false,
+    auto: true,
+    cues: [[SHAKE_DOUSE, 'douse'], [SHAKE_DOUSE - 0.2, 'steam']],
     pose(t, p) {
       const e = hold(t, 0, 0.1, 0.95, 1.35);
       const w = t * 2 * Math.PI * 5;
@@ -122,6 +161,7 @@ export const TRICKS: Trick[] = [
     name: 'lick',
     seconds: 1.8,
     tongue: true,
+    auto: true,
     pose(t, p, dir) {
       const e = hold(t, 0, 0.2, 1.4, 1.7);
       p.jaw = 0.75;
@@ -142,6 +182,7 @@ export const TRICKS: Trick[] = [
     name: 'tilt',
     seconds: 1.7,
     tongue: false,
+    auto: true,
     pose(t, p, dir) {
       const e = hold(t, 0, 0.22, 1.15, 1.6);
       p.roll = 0.42 * dir * e;
@@ -155,8 +196,9 @@ export const TRICKS: Trick[] = [
     name: 'sneeze',
     seconds: 2.3,
     tongue: false,
+    auto: true,
     // The plumes take a moment to build, so they start early enough to billow out on the "choo" at 1.2 s.
-    steamAt: 0.95,
+    cues: [[0.95, 'wideSteam']],
     pose(t, p) {
       const windup = (0.5 * ease(t / 0.45) + 0.5 * ease((t - 0.6) / 0.4)) * (1 - ease((t - 1.2) / 0.06));
       const snap = hold(t, 1.2, 1.26, 1.4, 2.1);
@@ -169,13 +211,27 @@ export const TRICKS: Trick[] = [
     },
   },
   {
+    // "A horse of a different color": purple, yellow, red, then back to green, with a happy bob.
+    name: 'colors',
+    seconds: 4.4,
+    tongue: false,
+    pose(t, p) {
+      const e = hold(t, 0, 0.3, 3.9, 4.3);
+      p.colors = keys(t, [[0, 0], [0.35, 1], [1.3, 1], [1.65, 2], [2.6, 2], [2.95, 3], [3.9, 3], [4.3, 4]]);
+      p.rise = 0.03 * Math.abs(Math.sin(t * Math.PI * 2.2)) * e;
+      p.roll = 0.1 * Math.sin(t * Math.PI * 1.1) * e;
+      p.eyeGlow = 1 + 0.5 * e;
+      p.idle = 1 - 0.6 * e;
+    },
+  },
+  {
     // A long spooky howl in profile, and the fire flares as it starts. The nose dips to gather breath, then the head turns and
     // swings up in one arc, banking into the turn, overshoots a little and settles. The nose
     // keeps creeping up as the howl swells.
     name: 'howl',
     seconds: 3.6,
     tongue: false,
-    flareAt: 0.9,
+    cues: [[0.9, 'flare']],
     pose(t, p, dir) {
       const e = hold(t, 0, 0.3, 3.0, 3.5);
       const up = -keys(t, [[0, 0], [0.25, -0.08], [0.85, 0.68], [1.1, 0.6], [2.6, 0.66], [2.95, 0.66], [3.45, 0]]);
@@ -193,6 +249,7 @@ export const TRICKS: Trick[] = [
     name: 'pant',
     seconds: 2.4,
     tongue: true,
+    auto: true,
     pose(t, p) {
       const e = hold(t, 0, 0.25, 2.0, 2.4);
       const beat = Math.sin(t * 2 * Math.PI * 3.6);
@@ -210,7 +267,7 @@ export const TRICKS: Trick[] = [
     name: 'squirrel',
     seconds: 2.8,
     tongue: false,
-    clip: true,
+    clip: 'first',
     pose(t, p, dir) {
       const e = hold(t, 0, 0.1, 1.7, 2.6);
       p.yaw = (0.75 * dir + 0.01 * Math.sin(t * 2 * Math.PI * 18)) * e;
@@ -221,10 +278,63 @@ export const TRICKS: Trick[] = [
     },
   },
   {
+    // Hiccups: four little jolts at uneven intervals, each with a "hic!".
+    name: 'hiccups',
+    seconds: 3.0,
+    tongue: false,
+    auto: true,
+    pose(t, p) {
+      let jolt = 0;
+      for (const at of HICCUP_TIMES) jolt = Math.max(jolt, hold(t, at, at + 0.04, at + 0.07, at + 0.35));
+      p.rise = 0.06 * jolt;
+      p.pitch = -0.14 * jolt;
+      p.jaw = RELAXED_JAW + 0.25 * jolt;
+      p.jawMix = jolt;
+      p.eyeGlow = 1 + 0.9 * jolt;
+      p.idle = 1 - 0.5 * hold(t, 0, 0.1, 2.6, 3.0);
+    },
+  },
+  {
+    // Blows a chewing-gum bubble that swells with each breath, wobbles, and pops in its face.
+    name: 'bubble',
+    seconds: 4.2,
+    tongue: false,
+    cues: [[BUBBLE_POP, 'pop']],
+    pose(t, p) {
+      const e = hold(t, 0, 0.25, 3.3, 3.9);
+      const size = t < BUBBLE_POP ? keys(t, [[0.3, 0], [1.0, 0.4], [1.3, 0.36], [2.1, 0.75], [2.4, 0.7], [3.2, 1]]) : 0;
+      const flinch = hold(t, BUBBLE_POP, BUBBLE_POP + 0.05, BUBBLE_POP + 0.15, BUBBLE_POP + 0.65);
+      // Lips shut around the gum.
+      p.jaw = 0.3;
+      p.jawMix = e;
+      p.bubble = size * (1 + 0.04 * Math.sin(t * 2 * Math.PI * 3));
+      p.pitch = -0.06 * size + 0.12 * flinch;
+      p.eyeOpen = 1 - 0.9 * flinch;
+      p.eyeGlow = 1 + 0.6 * size;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // A jump scare: rears back, then lunges at the audience with a bark as the lightning strikes.
+    name: 'lunge',
+    seconds: 1.9,
+    tongue: false,
+    cues: [[0.22, 'lightning']],
+    pose(t, p) {
+      p.lunge = keys(t, [[0, 0], [0.12, -0.25], [0.26, 2.2], [0.75, 2.0], [1.6, 0]]);
+      p.pitch = keys(t, [[0, 0], [0.12, -0.12], [0.26, 0.12], [0.75, 0.08], [1.6, 0]]);
+      p.jaw = 1.15;
+      p.jawMix = hold(t, 0.14, 0.24, 0.6, 0.9);
+      p.eyeGlow = 1 + 1.5 * hold(t, 0.1, 0.22, 0.8, 1.4);
+      p.idle = 1 - hold(t, 0, 0.1, 1.2, 1.7);
+    },
+  },
+  {
     // A cheeky wink. Both eyes flare first, so the one going dark stands out.
     name: 'wink',
     seconds: 1.5,
     tongue: false,
+    auto: true,
     pose(t, p) {
       const e = hold(t, 0, 0.2, 1.0, 1.45);
       p.eyeGlow = 1 + 1.5 * hold(t, 0, 0.2, 0.95, 1.3);
@@ -232,6 +342,31 @@ export const TRICKS: Trick[] = [
       p.roll = 0.14 * e;
       p.pitch = 0.05 * e;
       p.idle = 1 - 0.5 * e;
+    },
+  },
+  {
+    // Poppies! Nods off twice: each time the head sinks slowly and lolls to one side, then jerks
+    // partway back up, a little lower each time. The third time it stays down, snoring with "Z"s rising, then wakes with a start.
+    name: 'nap',
+    seconds: 6.6,
+    tongue: false,
+    pose(t, p, dir) {
+      const asleep = hold(t, 2.4, 2.9, NAP_WAKE, NAP_WAKE + 0.02);
+      // One breath per 1.2 s snore, rising on the inhale.
+      const breath = Math.sin(((t - 2.9) * 2 * Math.PI) / 1.2) * asleep;
+      p.pitch = keys(t, [[0, 0], [0.85, 0.24], [0.97, 0.1], [1.85, 0.34], [1.97, 0.18], [2.85, 0.42], [NAP_WAKE, 0.42], [NAP_WAKE + 0.1, -0.18], [6.4, 0]]) + 0.02 * breath;
+      p.roll = dir * keys(t, [[0, 0], [0.85, 0.2], [0.97, 0.08], [1.85, 0.28], [1.97, 0.15], [2.85, 0.3], [NAP_WAKE, 0.3], [NAP_WAKE + 0.1, -0.05], [6.0, 0]]);
+      p.eyeOpen = keys(t, [[0, 1], [0.85, 0.3], [0.97, 0.9], [1.85, 0.2], [1.97, 0.8], [2.7, 0], [NAP_WAKE, 0], [NAP_WAKE + 0.06, 1]]);
+      // The eyes fade further on each nod, flash bright on each jerk awake, and blaze on the final start.
+      const nodding = keys(t, [[0, 0], [0.85, 0.7], [0.97, 0], [1.85, 0.85], [1.97, 0], [2.85, 1]]);
+      p.eyeGlow = (1 - nodding) * (1 + 0.8 * (hold(t, 0.95, 0.98, 1.1, 1.5) + hold(t, 1.95, 1.98, 2.1, 2.5))) + 1.6 * hold(t, NAP_WAKE, NAP_WAKE + 0.05, NAP_WAKE + 0.3, 6.4);
+      p.jaw = RELAXED_JAW + 0.12 + 0.08 * breath;
+      p.jawMix = asleep;
+      // A little bob each time it jerks awake, and a jump on the final start.
+      const jerks = hold(t, 0.9, 0.97, 1.0, 1.2) + hold(t, 1.9, 1.97, 2.0, 2.2);
+      p.rise = 0.015 * breath + 0.03 * jerks + keys(t, [[NAP_WAKE, 0], [NAP_WAKE + 0.08, 0.08], [NAP_WAKE + 0.5, 0]]);
+      p.zzz = hold(t, 3.0, 3.1, 5.0, 5.1);
+      p.idle = 1 - hold(t, 0, 0.4, NAP_WAKE + 0.1, 6.4);
     },
   },
   {
@@ -247,6 +382,48 @@ export const TRICKS: Trick[] = [
       p.yaw = 0.1 * dir * Math.sin(t * 1.1) * g;
       p.idle = 1 - g;
       p.eyeGlow = 1 + 0.8 * g;
+    },
+  },
+  {
+    // Flying monkeys swoop across the backdrop, screeching. The dog looks up and follows them, mouth agape.
+    name: 'monkeys',
+    seconds: 4.6,
+    tongue: false,
+    cues: [[0.1, 'monkeys']],
+    pose(t, p, dir) {
+      const e = hold(t, 0, 0.4, 3.8, 4.5);
+      // The flock crosses toward the dir side. A positive yaw turns the nose toward +x.
+      p.yaw = dir * keys(t, [[0.3, -0.5], [1.2, -0.3], [2.6, 0.5], [3.3, 0.55]]) * e;
+      p.pitch = -0.28 * e;
+      p.jaw = 0.9;
+      p.jawMix = hold(t, 0.8, 1.1, 3.0, 3.5);
+      p.eyeGlow = 1 + 0.7 * e;
+      p.idle = 1 - e;
+    },
+  },
+  {
+    // "I'm melting!" Timed to the witch's lines in public/sfx/melt.wav: the head writhes at "Look
+    // what you've done!", drips down into a puddle in clouds of steam through "I'm melting!
+    // Melting!", lies there through "Oh, what a world", then rises back up whole.
+    name: 'melt',
+    seconds: 8.8,
+    tongue: false,
+    clip: 'instead',
+    cues: [[0.3, 'steam'], [1.6, 'steam'], [2.8, 'steam'], [4.0, 'steam'], [5.4, 'steam']],
+    pose(t, p, dir) {
+      const melt = Math.pow(ease((t - 1.1) / 3.5), 1.6) * (1 - ease((t - 7.4) / 1.0));
+      const writhe = hold(t, 0.1, 0.5, 4.0, 4.8);
+      // The jaw works on each of her lines, until the mouth has melted away.
+      let talk = 0;
+      for (const [a, b] of MELT_LINES) talk = Math.max(talk, hold(t, a, a + 0.08, b - 0.08, b));
+      p.melt = melt;
+      p.roll = 0.15 * dir * melt;
+      p.yaw = 0.15 * Math.sin(t * 5) * writhe;
+      p.jaw = 0.85 + 0.25 * Math.abs(Math.sin(t * 2 * Math.PI * 3));
+      p.jawMix = talk * (1 - melt);
+      p.eyeOpen = 1 - 0.5 * melt;
+      p.eyeGlow = 1 - 0.7 * melt;
+      p.idle = 1 - hold(t, 0, 0.3, 7.9, 8.7);
     },
   },
   {

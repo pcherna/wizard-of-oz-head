@@ -31,6 +31,8 @@ export interface Settings {
   volume: number;
   /** Fire, steam and thunder level, 0..1, on top of the master volume. The voice ignores it. */
   sfxVolume: number;
+  /** Seconds with no button press and no speech before the dog does a small trick on its own. 0 is off. */
+  autopilotSec: number;
   /** Resting fire height/brightness, 0..2. */
   fireBase: number;
   /** Voice pitch ratio, 0.5..1. Lower is deeper. */
@@ -97,6 +99,7 @@ export const OZ_SCULPT_DEFAULTS = {
 export const DEFAULT_SETTINGS: Settings = {
   volume: 1.51,
   sfxVolume: 0.25,
+  autopilotSec: 45,
   fireBase: 0.35,
   pitch: 0.85,
   reverbWet: 0.4,

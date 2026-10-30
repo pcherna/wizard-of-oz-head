@@ -61,19 +61,19 @@ export class Sfx {
   }
 
   /**
-   * The sound for a dog trick, timed to its poses. Returns how long the trick's clip plays
-   * before the head should move, or 0 without a clip.
+   * The sound for a dog trick, timed to its poses. dir is the side the trick goes toward.
+   * Returns how long a 'first' clip plays before the head should move, or 0.
    */
-  trick(name: TrickName): number {
+  trick(name: TrickName, dir: number): number {
     const clip = this.clips[name];
     if (!clip) {
-      this.tricks.play(name);
+      this.tricks.play(name, dir);
       return 0;
     }
     const src = new AudioBufferSourceNode(this.ctx, { buffer: clip });
     src.connect(new GainNode(this.ctx, { gain: CLIP_BOOST })).connect(this.bus.trick);
     src.start();
-    return clip.duration;
+    return TRICKS.find((tr) => tr.name === name)?.clip === 'first' ? clip.duration : 0;
   }
 
   thunder() {

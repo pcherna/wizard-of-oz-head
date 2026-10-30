@@ -35,6 +35,8 @@ interface Rig {
   eyeR: THREE.Vector3;
   /** Height and depth of the front of the mouth, where a tongue comes out. */
   tongueLip: THREE.Vector2;
+  /** Just in front of the closed lips, where a gum bubble grows from. */
+  mouthFront: THREE.Vector3;
 }
 
 const SCAN_RIG: Rig = {
@@ -57,6 +59,7 @@ const SCAN_RIG: Rig = {
   eyeR: new THREE.Vector3(FACE_MID_X + 0.62, 1.78, 1.75),
   // The scans have no separate tongue.
   tongueLip: new THREE.Vector2(0.45, 2.24),
+  mouthFront: new THREE.Vector3(FACE_MID_X, 0.45, 2.3),
 };
 
 /** The sculpt sinks the eyes, and setSculpt() moves the chin landmark with the chin drop. */
@@ -74,6 +77,7 @@ const PROCEDURAL_RIG: Rig = {
   midX: 0,
   cut: neckCut(-0.6),
   mouthZ: 1.95,
+  mouthFront: new THREE.Vector3(0, 0.45, 2.0),
   eyeL: new THREE.Vector3(-0.6, 1.78, 1.6),
   eyeR: new THREE.Vector3(0.6, 1.78, 1.6),
 };
@@ -101,6 +105,8 @@ const LABRADOR_RIG: Rig = {
   eyeR: new THREE.Vector3(0.27, 4.85, 4.05),
   // The gap between the lower lip (y 4.03) and upper lip (y 4.15), just in front of the lower front teeth.
   tongueLip: new THREE.Vector2(4.05, 4.45),
+  // Under the nose, in front of the upper lip (z 4.67 at y 4.15).
+  mouthFront: new THREE.Vector3(0, 4.03, 4.62),
   // Unused without a seam mouth, but kept consistent with the measurements.
   midX: 0,
   seamY: 4.1,
@@ -128,6 +134,11 @@ uniform float uJawRest;
 uniform float uSeamMouth;
 uniform vec4 uTongue;
 uniform vec2 uTongueLip;
+uniform float uTime;
+uniform float uMelt;
+uniform vec3 uPivot;
+uniform float uFloorY;
+uniform float uMeshUnit;
 attribute float aJaw;
 attribute float aTongue;
 varying vec3 vNormalW;
@@ -173,6 +184,22 @@ void moveTongue(inout vec3 p, inout vec3 n, float w) {
   n = vec3(n.x, n.z * s + n.y * c, n.z * c - n.y * s);
 }
 
+// Slumps the head down onto a puddle just under the chin (uFloorY) and spreads what reaches it
+// outward. Some columns sag faster and drip below. Works in world units (uMeshUnit mesh units
+// each), so every head melts alike.
+vec3 meltHead(vec3 p) {
+  float m = uMelt;
+  vec2 c = (p.xz - uPivot.xz) / uMeshUnit;
+  float drip = pow(0.5 + 0.5 * sin(c.x * 31.0 + 1.7 * sin(c.y * 13.0)), 6.0);
+  float h = (p.y - uFloorY) / uMeshUnit;
+  float sag = clamp(m * (1.0 + 0.5 * drip), 0.0, 1.0);
+  if (h > 0.0) h *= mix(1.0, 0.12, sag);
+  h -= m * m * 0.3 * drip;
+  c *= 1.0 + 0.9 * m * (1.0 - smoothstep(0.0, 0.35, max(h, 0.0)));
+  c.x += sin(h * 14.0 + uTime * 4.0) * 0.025 * m;
+  return vec3(uPivot.x + c.x * uMeshUnit, uFloorY + h * uMeshUnit, uPivot.z + c.y * uMeshUnit);
+}
+
 void main() {
   vec3 p = position;
   vec3 n = normal;
@@ -194,6 +221,7 @@ void main() {
   vec3 q = p - uHinge;
   p = uHinge + vec3(q.x, q.y * c - q.z * s, q.y * s + q.z * c);
   n = vec3(n.x, n.y * c - n.z * s, n.y * s + n.z * c);
+  if (uMelt > 0.0) p = meltHead(p);
 
   vJawW = w;
   vLocal = position;
@@ -223,6 +251,7 @@ uniform float uChinY;
 uniform float uRimGlow;
 uniform float uShine;
 uniform float uGhost;
+uniform float uMelt;
 uniform float uJaw;
 uniform float uSeamY;
 uniform float uMouthHalfW;
@@ -274,7 +303,8 @@ void main() {
   float detail = 1.0;
   if (uUseMap > 0.5) {
     vec4 t = texture2D(uMap, vUv);
-    if (t.a < uAlphaCut) discard;
+    // Melting fades out the whiskers (thin alpha-masked strands) early, before they twist into odd shapes.
+    if (t.a < mix(uAlphaCut, 0.99, smoothstep(0.03, 0.3, uMelt))) discard;
     detail = 0.45 + 1.1 * dot(t.rgb, vec3(0.3, 0.59, 0.11));
   }
   vec3 col = uBase * (0.12 + 0.7 * key) * detail;
@@ -289,7 +319,7 @@ void main() {
 
   // Ghost: a pale shell, brightest at the edges, with the eyes still glowing. The material adds it over the scene behind.
   // The face stays dim, under the bloom threshold, so only the outline glows and the backdrop shows through.
-  vec3 ghost = vec3(0.8, 0.92, 1.0) * (0.02 + 0.03 * key + 0.3 * fres);
+  vec3 ghost = vec3(0.8, 0.92, 1.0) * (0.008 + 0.012 * key + 0.17 * fres);
   col = mix(col, ghost, uGhost);
 
   if (uPaintEyes > 0.5) {
@@ -312,9 +342,46 @@ void main() {
   float gap = smoothstep(0.02, 0.2, vJawW) * (1.0 - smoothstep(0.8, 0.98, vJawW));
   col = mix(col, vec3(0.0, 0.025, 0.0), clamp(uSeamMouth * inMouth * gap * smoothstep(0.02, 0.12, uJaw) * 1.4, 0.0, 1.0));
 
+  col *= 1.0 - 0.3 * uMelt;
   col += uFlash * vec3(0.7, 0.85, 1.0) * (0.25 + 0.8 * key);
   col *= 0.96 + 0.04 * sin(vPosW.y * 140.0 - uTime * 6.0);
   gl_FragColor = vec4(col * neck, 1.0);
+}
+`;
+
+/** Emerald City colors for the color trick, as [base, rim]: green, purple, yellow, red, and green again. */
+const PALETTE = [
+  [0x2a9a36, 0x7dff8a],
+  [0x7a2aa0, 0xd890ff],
+  // Yellow is far brighter than purple or red at the same strength, so it's darker here to keep the bloom from blowing it out.
+  [0x7a6812, 0xd6be4c],
+  [0xa82222, 0xff8070],
+  [0x2a9a36, 0x7dff8a],
+].map(([base, rim]) => [new THREE.Color(base), new THREE.Color(rim)]);
+
+/** Gum bubble radius at full size, in world units at head scale 1. */
+const BUBBLE_RADIUS = 0.28;
+/** How much higher a tiny bubble starts than a full one, in world units at head scale 1. */
+const BUBBLE_START_LIFT = 0.06;
+
+const bubbleVertex = /* glsl */ `
+varying vec3 vN;
+varying vec3 vV;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vN = normalize(mat3(modelMatrix) * normal);
+  vV = normalize(cameraPosition - wp.xyz);
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+// A thin pink film: nearly clear face-on, thicker and brighter at the edges.
+const bubbleFragment = /* glsl */ `
+varying vec3 vN;
+varying vec3 vV;
+void main() {
+  float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0);
+  gl_FragColor = vec4(vec3(1.0, 0.42, 0.75) * (0.35 + 0.9 * f), 0.3 + 0.6 * f);
 }
 `;
 
@@ -349,6 +416,13 @@ export class Head implements FlingSource {
   private frameDt = 1 / 60;
   /** Draws depth only, before the ghost, so the ghost shows just its front surface. */
   private depthMesh: THREE.Mesh;
+  private bubble: THREE.Mesh;
+  /** Top of the head, in mesh units. */
+  private crown: THREE.Vector3;
+  /** Floats "Z"s while above 0.5. */
+  zzz = 0;
+  /** How far the head has turned into a see-through ghost, 0 to 1. */
+  ghost = 0;
 
   private constructor(
     geometry: THREE.BufferGeometry,
@@ -375,8 +449,8 @@ export class Head implements FlingSource {
       uHinge: { value: rig.hinge },
       uEyeL: { value: rig.eyeL },
       uEyeR: { value: rig.eyeR },
-      uBase: { value: new THREE.Color(0x2a9a36) },
-      uRim: { value: new THREE.Color(0x7dff8a) },
+      uBase: { value: PALETTE[0][0].clone() },
+      uRim: { value: PALETTE[0][1].clone() },
       uFireColor: { value: new THREE.Color(0xff7a1a) },
       uTime: { value: 0 },
       uFire: { value: 1 },
@@ -390,6 +464,11 @@ export class Head implements FlingSource {
       uGaze: { value: new THREE.Vector2() },
       uShine: { value: 1 },
       uGhost: { value: 0 },
+      uMelt: { value: 0 },
+      uPivot: { value: rig.pivot },
+      // A little under the chin, so the jaw melts too.
+      uFloorY: { value: rig.chinY - 0.15 / rig.scale },
+      uMeshUnit: { value: 1 / rig.scale },
       uRimGlow: { value: 0.55 },
       uUseMap: { value: map ? 1 : 0 },
       uMap: { value: map },
@@ -409,10 +488,19 @@ export class Head implements FlingSource {
     depthOnly.colorWrite = false;
     this.depthMesh = new THREE.Mesh(geometry, depthOnly);
     this.depthMesh.position.copy(this.mesh.position);
-    this.depthMesh.renderOrder = -1;
+    // After every opaque object, the backdrop included. Earlier, its depth hides the backdrop behind the ghost.
+    this.depthMesh.renderOrder = 1;
     this.depthMesh.visible = false;
     this.group.add(this.depthMesh);
     this.flingVerts = outerVertices(geometry, rig);
+    this.bubble = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 20),
+      new THREE.ShaderMaterial({ vertexShader: bubbleVertex, fragmentShader: bubbleFragment, transparent: true, depthWrite: false }),
+    );
+    this.bubble.visible = false;
+    this.mesh.add(this.bubble);
+    geometry.computeBoundingBox();
+    this.crown = new THREE.Vector3(rig.midX, geometry.boundingBox!.max.y, rig.pivot.z);
     // Nod inside the turn, so a head turned to the side still tips its own nose up or down.
     this.group.rotation.order = 'YXZ';
     this.setPlacement(1, 0);
@@ -485,11 +573,24 @@ export class Head implements FlingSource {
     this.placeY = y;
   }
 
-  /** Starts a trick at time t, replacing any trick still running. A later t holds the head still until then. */
-  perform(trick: Trick, t: number) {
+  /**
+   * Starts a trick at time t, replacing any trick still running. A later t holds the head still
+   * until then. dir (+1 or -1) picks the side for moves that go one way.
+   */
+  perform(trick: Trick, t: number, dir: number) {
     this.trick = trick;
     this.trickStart = t;
-    this.trickDir = Math.random() < 0.5 ? -1 : 1;
+    this.trickDir = dir;
+  }
+
+  /** The top of the head, in world space. */
+  crownWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.copy(this.crown).applyMatrix4(this.mesh.matrixWorld);
+  }
+
+  /** Where a full gum bubble sits, in world space. */
+  bubbleWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.copy(this.rig.mouthFront).setZ(this.rig.mouthFront.z + BUBBLE_RADIUS / this.rig.scale).applyMatrix4(this.mesh.matrixWorld);
   }
 
   /** A random point on the outer head and its velocity, in world space, for a flung drop. */
@@ -517,7 +618,12 @@ export class Head implements FlingSource {
     (u.uTongue.value as THREE.Vector4).set(pose.tongueOut, pose.tongueCurl, pose.tongueSide, pose.tongueDroop);
     (u.uWink.value as THREE.Vector2).set(pose.winkL, pose.winkR);
     this.spray = pose.spray;
+    this.zzz = pose.zzz;
+    this.ghost = pose.ghost;
     this.setGhost(pose.ghost);
+    u.uMelt.value = pose.melt;
+    this.setColors(pose.colors);
+    this.setBubble(pose.bubble, t);
     u.uWidth.value = mouth.width;
     u.uFire.value = fire;
     u.uFlash.value = flash;
@@ -556,8 +662,31 @@ export class Head implements FlingSource {
       g.rotation.z = 0.04 * noise1(t * 0.13 + 30) * idle + pose.roll;
     }
     g.position.y = -0.02 + this.placeY + 0.025 * Math.sin(t * 0.9) + pose.rise;
+    g.position.z = pose.lunge;
     // Now, not at render, so flingPoint() sees this frame's pose.
     g.updateMatrixWorld(true);
+  }
+
+  /** Blends between the palette entries on either side of `at`. */
+  private setColors(at: number) {
+    const i = Math.min(Math.floor(at), PALETTE.length - 2);
+    const f = at - i;
+    (this.uniforms.uBase.value as THREE.Color).lerpColors(PALETTE[i][0], PALETTE[i + 1][0], f);
+    (this.uniforms.uRim.value as THREE.Color).lerpColors(PALETTE[i][1], PALETTE[i + 1][1], f);
+  }
+
+  /**
+   * Sizes the gum bubble, 0 to 1, growing forward from the lips with a slight wobble. It starts
+   * between the lips and sinks to the mouth front as it grows.
+   */
+  private setBubble(size: number, t: number) {
+    this.bubble.visible = size > 0.001;
+    if (!this.bubble.visible) return;
+    const r = (size * BUBBLE_RADIUS) / this.rig.scale;
+    const wobble = 0.04 * Math.sin(t * 17);
+    this.bubble.scale.set(r * (1 + wobble), r * (1 - wobble), r);
+    const lift = ((1 - size) * BUBBLE_START_LIFT) / this.rig.scale;
+    this.bubble.position.set(this.rig.mouthFront.x, this.rig.mouthFront.y + lift, this.rig.mouthFront.z + r * 0.9);
   }
 
   /** A ghost adds its light over the scene behind it, so the fire and backdrop show through. */
@@ -574,6 +703,8 @@ export class Head implements FlingSource {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
     (this.depthMesh.material as THREE.Material).dispose();
+    this.bubble.geometry.dispose();
+    (this.bubble.material as THREE.Material).dispose();
     (this.uniforms.uMap.value as THREE.Texture | null)?.dispose();
   }
 }

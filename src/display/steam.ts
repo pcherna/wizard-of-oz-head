@@ -112,6 +112,8 @@ export class Steam {
   private next = [0, 0];
   private spawnDebt = [0, 0];
   private burstLeft = 0;
+  /** How wide the current burst spreads: 1 is a normal column. */
+  private burstWidth = 1;
 
   constructor() {
     for (let i = 0; i < this.count; i++) this.seed[i] = Math.random();
@@ -166,8 +168,10 @@ export class Steam {
     renderer.setRenderTarget(previous);
   }
 
-  burst() {
+  /** width above 1 billows wider than a normal column, such as for a sneeze. */
+  burst(width = 1) {
     this.burstLeft = STEAM_BURST_SEC;
+    this.burstWidth = width;
   }
 
   setPixelScale(scale: number) {
@@ -190,7 +194,8 @@ export class Steam {
   update(t: number, dt: number) {
     const bursting = this.burstLeft > 0;
     this.burstLeft -= dt;
-    const rate = bursting ? BURST_RATE : IDLE_RATE;
+    // A wider cloud needs more puffs, or it thins out.
+    const rate = bursting ? BURST_RATE * (0.5 + 0.5 * this.burstWidth) : IDLE_RATE;
 
     for (let side = 0; side < 2; side++) {
       this.spawnDebt[side] += rate * dt;
@@ -234,12 +239,13 @@ export class Steam {
     this.pos[k] = vent.x + (Math.random() - 0.5) * 0.1;
     this.pos[k + 1] = VENT_Y;
     this.pos[k + 2] = VENT_Z;
-    this.vel[k] = vent.dir * (bursting ? 0.3 : 0.08) + (Math.random() - 0.5) * (bursting ? 0.4 : 0.25);
+    const width = bursting ? this.burstWidth : 1;
+    this.vel[k] = vent.dir * (bursting ? 0.3 : 0.08) * width + (Math.random() - 0.5) * (bursting ? 0.4 : 0.25) * width;
     this.vel[k + 1] = speed;
     this.vel[k + 2] = (Math.random() - 0.5) * 0.2;
     this.opacity[i] = bursting ? 0.085 : 0.16;
     this.lifeSec[i] = bursting ? BURST_LIFE_SEC : IDLE_LIFE_SEC;
-    this.grow[i] = bursting ? 1.7 : 1.3;
+    this.grow[i] = bursting ? 1.7 * (0.6 + 0.4 * width) : 1.3;
     this.age[i] = 0;
   }
 }

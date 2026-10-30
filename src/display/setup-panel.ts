@@ -9,6 +9,7 @@ const SLIDERS: [NumericKey, string, number, number, number][] = [
   ['brightness', 'Overall brightness', 0.1, 1, 0.01],
   ['volume', 'Volume', 0, 2, 0.01],
   ['sfxVolume', 'Effects volume', 0, 1, 0.01],
+  ['autopilotSec', 'Autopilot after (s, 0 = off)', 0, 120, 5],
   ['pitch', 'Pitch', 0.5, 1, 0.01],
   ['reverbWet', 'Reverb', 0, 1, 0.01],
   ['gate', 'Gate', 0, 0.05, 0.001],

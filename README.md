@@ -62,24 +62,37 @@ A clicker has only three buttons, so lightning hides behind the steam button. Ta
 Each press of the trick button plays the next trick in this order, then starts over:
 
 1. Blep: sticks its tongue out and waggles its head, with a raspberry.
-2. Shake: a wet-dog shake that flings water drops off its ears and head, with flapping ears and a jingling collar tag.
+2. Shake: a wet-dog shake that flings water drops off its ears and head, with flapping ears and a jingling collar tag. The water puts the fire out with a hiss and a puff of steam, and it relights a moment later.
 3. Lick: licks its nose with one swipe across and back, with a slurp.
 4. Tilt: the confused head tilt, to a random side, with a questioning whine.
-5. Sneeze: rears back twice, then sneezes "choo!" so hard the steam vents blast.
-6. Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
-7. Pant: pants happily with its tongue hanging out.
-8. Squirrel: snaps its head to the side and stares. It can play a clip first, as described below.
-9. Wink: both eyes flare bright, then one goes dark for a moment, with a sparkle.
-10. Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
-11. Spin: turns its head all the way around, like a possessed doll.
+5. Sneeze: rears back twice, then sneezes "choo!" so hard the steam vents blast a cloud wider than a normal burst.
+6. Colors: "a horse of a different color." The head turns purple, yellow and red, then green again, with a harp sweep at each change.
+7. Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
+8. Pant: pants happily with its tongue hanging out.
+9. Squirrel: snaps its head to the side and stares. It can play a clip first, as described below.
+10. Hiccups: four little jolts at uneven intervals, each with a "hic!".
+11. Bubble: blows a pink chewing-gum bubble that grows with each breath and pops in its face, scattering bits of gum.
+12. Lunge: a jump scare. The head rears back, then lunges at the audience with a "WOOF!" as the lightning strikes.
+13. Wink: both eyes flare bright, then one goes dark for a moment, with a sparkle.
+14. Nap: the poppy field. Twice the head sinks and lolls to one side, then jerks partway back up. The third time it stays down, snoring with "Z"s rising, then wakes with a snort and a "huh?!".
+15. Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
+16. Monkeys: flying monkeys swoop across the stage, screeching. The dog looks up and follows them, mouth open.
+17. Melt: the witch cries "Look what you've done! I'm melting! Melting!" as the head writhes and drips down into a puddle in clouds of steam. It lies there through "Oh, what a world", then rises back up whole.
+18. Spin: turns its head all the way around, like a possessed doll.
 
-A trick takes 1.3 to 3.6 seconds. Pressing again during a trick starts the next one at once. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
+A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
 
 Only the Labrador has a tongue, so the other heads skip blep, lick and pant. The model has no back to its skull, so the inside of the face flashes past during the spin. The spin is fast, so the gap shows for only about a sixth of a second.
 
 To check a pose, add `?trick=lick&at=0.8` to the URL. It holds that trick at 0.8 seconds in.
 
 The squirrel trick can start with a sound clip, such as Dug's "Squirrel!" from the movie *Up*. Save the clip as `public/sfx/squirrel.mp3` or `public/sfx/squirrel.wav`. The dog plays the clip, then turns its head when the clip ends. Trim any silence from the end of the clip, or the turn comes late. Without the file, the squirrel trick plays its own short sound and turns at once.
+
+The melt plays the witch's lines from `public/sfx/melt.wav`, in place of its own sound. The melt is timed to that clip: the head starts melting at "I'm melting!", 1.3 seconds in, and re-forms after 7.4 seconds, when she finishes. A different clip needs new times in `MELT_LINES` and the melt trick in `src/display/tricks.ts`. Without the file, the melt plays a synthesized sizzle and wail on the same timeline.
+
+### Autopilot
+
+When nobody presses a button and nobody speaks for 45 seconds, the dog does a small trick on its own: blep, shake, lick, tilt, sneeze, pant, hiccups or wink. It never repeats the trick it just did, and the wait varies by up to 30% so the tricks don't come like clockwork. Autopilot never plays the big set pieces, such as the melt, monkeys or ghost. Those stay under your control. Set the wait with the Autopilot slider in the setup panel. 0 turns autopilot off. Autopilot tricks don't move the trick button's place in its cycle.
 
 ## Upside-down projector
 
@@ -119,6 +132,7 @@ Press `s` to open it.
 - **Mic and Speakers:** pick the mic and the room speakers. Always pick the speakers explicitly. If you don't, macOS can move the output onto the AirPods when they become the input.
 - **Cue tones:** where the mute and unmute tones play. Pick the performer's AirPods, and only the performer hears them: two falling notes for muted, two rising notes for live. The voice and effects stay on the speakers. Off plays no tones. The unmute tone plays while the mic is still shut, so the mic can't pick it up.
 - **Test speakers:** plays a short beep through the chosen output. If one speaker stays silent while others work, open Audio MIDI Setup and check that device's volume and Mute box. macOS keeps a separate volume for each device, and the menu-bar slider only changes the current default.
+- **Autopilot after:** seconds without a button press or speech before the dog does a small trick on its own. 0 turns autopilot off. See Autopilot under Dog tricks.
 - **Effects volume:** turns down the fire, steam and thunder sounds and leaves the voice alone. Set the voice with Volume first, then lower the effects to taste. At 1 the effects play at full level.
 - **Pitch and Reverb:** shape the voice. Pitch 0.72 is about six semitones down.
 - **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch. Keep it below your quietest words, or it chops the voice mid-sentence. 0.004 suits the wired mic at its current input level.

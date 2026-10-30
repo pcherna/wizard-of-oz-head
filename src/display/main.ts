@@ -15,8 +15,10 @@ import { Backdrop } from './backdrop';
 import { SteamPipes } from './pipes';
 import { CueTones } from '../audio/cue';
 import { Projection } from './projection';
-import { TRICKS } from './tricks';
+import { TRICKS, type Cue, type Trick } from './tricks';
 import { Droplets } from './droplets';
+import { Monkeys } from './monkeys';
+import { Snooze } from './zzz';
 
 const params = new URLSearchParams(location.search);
 const demo = params.has('demo');
@@ -39,7 +41,11 @@ pipes.setBrightness(store.value.backdrop);
 stage.scene.add(pipes.group);
 stage.scene.add(fire.group, steam.composite);
 const droplets = new Droplets();
-stage.scene.add(droplets.points);
+/** Bits of a popped gum bubble. */
+const gum = new Droplets(0xff6ec0);
+const monkeys = new Monkeys(stage.camera);
+const snooze = new Snooze();
+stage.scene.add(droplets.points, gum.points, monkeys.group, snooze.group);
 
 let voice: Voice | null = null;
 let sfx: Sfx | null = null;
@@ -70,7 +76,7 @@ function loadHead(variant: Settings['headVariant']) {
     head.setRimGlow(store.value.headRim);
     if (pinnedTrick) {
       head.pinnedTrickAt = Number(params.get('at') ?? 0.5);
-      head.perform(pinnedTrick, clock);
+      head.perform(pinnedTrick, clock, 1);
     }
     stage.scene.add(head.group);
   }, showError);
@@ -87,6 +93,7 @@ let nextTrick = 0;
 
 /** Clicker and remote triggers. Shout-driven flares skip this, so they stay silent under the voice. */
 function trigger(effect: EffectName) {
+  noteActivity();
   if (effect === 'fire') {
     fire.flareUp();
     sfx?.fire();
@@ -103,23 +110,56 @@ function trigger(effect: EffectName) {
     sfx?.steam(STEAM_BURST_SEC);
   } else if (effect === 'lightning') {
     lightning.strike(clock);
-  } else {
-    playTrick();
+  } else if (head) {
+    // Each press plays the next trick, skipping tongue tricks on heads without a tongue.
+    const tricks = TRICKS.filter((tr) => head!.hasTongue || !tr.tongue);
+    playTrick(tricks[nextTrick++ % tricks.length]);
   }
 }
 
-/** Each press plays the next trick in TRICKS, skipping tongue tricks on heads without a tongue. */
-function playTrick() {
+/** Cues still waiting from the current trick. A new trick cancels them, so skipping past a lunge doesn't strike lightning. */
+let cueTimers: number[] = [];
+
+function playTrick(trick: Trick) {
   if (!head) return;
-  const tongue = head.hasTongue;
-  const tricks = TRICKS.filter((tr) => tongue || !tr.tongue);
-  const trick = tricks[nextTrick++ % tricks.length];
-  // A clip such as "Squirrel!" plays first, and the head moves when it ends.
-  const lead = sfx?.trick(trick.name) ?? 0;
-  head.perform(trick, clock + lead);
-  // Silent, so the hiss doesn't cover the trick's own sound. It doesn't count toward lightning taps.
-  if (trick.steamAt !== undefined) setTimeout(() => steam.burst(), (lead + trick.steamAt) * 1000);
-  if (trick.flareAt !== undefined) setTimeout(() => fire.flareUp(), (lead + trick.flareAt) * 1000);
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  // A clip such as "Squirrel!" may play first. Then the head moves when it ends.
+  const lead = sfx?.trick(trick.name, dir) ?? 0;
+  head.perform(trick, clock + lead, dir);
+  cueTimers.forEach(clearTimeout);
+  cueTimers = (trick.cues ?? []).map(([at, cue]) => window.setTimeout(() => runCue(cue, dir), (lead + at) * 1000));
+}
+
+/** Steam and fire stay silent, so they don't cover the trick's own sound. Trick steam doesn't count toward lightning taps. */
+function runCue(cue: Cue, dir: number) {
+  if (cue === 'steam') steam.burst();
+  else if (cue === 'wideSteam') steam.burst(2.5);
+  else if (cue === 'flare') fire.flareUp();
+  else if (cue === 'douse') fire.douse();
+  else if (cue === 'lightning') lightning.strike(clock);
+  else if (cue === 'monkeys') monkeys.launch(clock, dir);
+  else if (head) gum.burst(head.bubbleWorld(new THREE.Vector3()), 40, 2.2);
+}
+
+// --- Autopilot: a small trick now and then, when nobody presses anything or speaks ---
+
+let lastActivity = 0;
+/** Scales the wait, so autopilot tricks don't come like clockwork. */
+let autoJitter = 1;
+let lastAuto: Trick | null = null;
+
+function noteActivity() {
+  lastActivity = clock;
+  autoJitter = 0.7 + 0.6 * Math.random();
+}
+
+function autopilot() {
+  const wait = store.value.autopilotSec;
+  if (wait <= 0 || !head || clock - lastActivity < wait * autoJitter) return;
+  const choices = TRICKS.filter((tr) => tr.auto && tr !== lastAuto && (head!.hasTongue || !tr.tongue));
+  lastAuto = choices[Math.floor(Math.random() * choices.length)];
+  playTrick(lastAuto);
+  noteActivity();
 }
 
 // --- Settings ---------------------------------------------------------------
@@ -161,6 +201,7 @@ let micOpensAt = 0;
 const cue = new CueTones();
 
 function setMicMuted(muted: boolean) {
+  noteActivity();
   micMuted = muted;
   cue.play(muted);
   if (!muted) micOpensAt = clock + VOICE.unmuteHoldSec;
@@ -320,6 +361,7 @@ function updatePixelScale() {
   fire.setPixelScale(scale);
   steam.setPixelScale(scale);
   droplets.setPixelScale(scale);
+  gum.setPixelScale(scale);
   const buffer = stage.renderer.getDrawingBufferSize(new THREE.Vector2());
   steam.setSize(buffer.x, buffer.y);
   // Half the visible width at the steam's depth (camera z = 6, steam z = 0.3).
@@ -350,11 +392,16 @@ function frame(now: number) {
   fire.update(clock, dt, store.value.fireBase);
   steam.update(clock, dt);
   lightning.update(clock);
-  backdrop.update(clock, fire.intensity, lightning.level);
+  backdrop.update(clock, fire.intensity, lightning.level, head?.ghost ?? 0);
   pipes.update(clock, fire.intensity);
   const micLive = !micMuted && clock >= micOpensAt;
   head?.update(clock, dt, mouth, fire.intensity, lightning.level, micLive);
   droplets.update(dt, head);
+  gum.update(dt, null);
+  snooze.update(dt, head);
+  monkeys.update(clock);
+  if (mouth.level > 0.15) noteActivity();
+  autopilot();
   steam.renderDensity(stage.renderer, stage.camera);
   stage.render();
 

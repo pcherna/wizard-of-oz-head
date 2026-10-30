@@ -17,6 +17,7 @@ const fragmentShader = /* glsl */ `
 uniform float uTime;
 uniform float uFire;
 uniform float uFlash;
+uniform float uGhost;
 uniform float uBrightness;
 uniform float uAspect;
 varying vec2 vUv;
@@ -67,8 +68,9 @@ void main() {
   warm += vec3(0.35, 0.24, 0.15) * smoothstep(top - 0.035, top - 0.005, q.y) * inCase * 0.4;
   col = mix(col, warm, inCase);
 
-  // Keep the space behind the head dark, so the head reads against it.
-  col *= 1.0 - 0.6 * exp(-dot(q - vec2(0.0, 0.25), q - vec2(0.0, 0.25)) / 0.25);
+  // Keep the space behind the head dark, so the head reads against it. A ghost head lifts the
+  // shade, so the organ shows through it.
+  col *= 1.0 - 0.6 * (1.0 - uGhost) * exp(-dot(q - vec2(0.0, 0.25), q - vec2(0.0, 0.25)) / 0.25);
 
   col += uFlash * vec3(0.6, 0.7, 0.9) * 0.5;
   gl_FragColor = vec4(col * uBrightness, 1.0);
@@ -86,6 +88,7 @@ export class Backdrop {
     uTime: { value: 0 },
     uFire: { value: 1 },
     uFlash: { value: 0 },
+    uGhost: { value: 0 },
     uBrightness: { value: 0 },
     uAspect: { value: 16 / 9 },
   };
@@ -111,9 +114,11 @@ export class Backdrop {
     this.mesh.visible = brightness > 0;
   }
 
-  update(t: number, fire: number, flash: number) {
+  /** ghost (0 to 1) is how far the head has turned into a ghost. */
+  update(t: number, fire: number, flash: number, ghost: number) {
     this.uniforms.uTime.value = t;
     this.uniforms.uFire.value = fire;
     this.uniforms.uFlash.value = flash;
+    this.uniforms.uGhost.value = ghost;
   }
 }
