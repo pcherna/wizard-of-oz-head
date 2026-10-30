@@ -95,7 +95,7 @@ Press `s` to open it.
 - **Test speakers:** plays a short beep through the chosen output. If one speaker stays silent while others work, open Audio MIDI Setup and check that device's volume and Mute box. macOS keeps a separate volume for each device, and the menu-bar slider only changes the current default.
 - **Effects volume:** turns down the fire, steam and thunder sounds and leaves the voice alone. Set the voice with Volume first, then lower the effects to taste. At 1 the effects play at full level.
 - **Pitch and Reverb:** shape the voice. Pitch 0.72 is about six semitones down.
-- **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch.
+- **Gate:** silences the mic below this level. Raise it if room noise makes the mouth twitch. Keep it below your quietest words, or it chops the voice mid-sentence. 0.004 suits the wired mic at its current input level.
 - **Mouth sensitivity:** the voice level that opens the jaw fully. Watch the meter while you speak normally. Aim for about half.
 - **Head scale and height:** fit the head to the screen or scrim.
 - **Shine:** strength of the glossy highlight on the head. 0 is fully matte.
@@ -109,7 +109,7 @@ Settings save in the browser. The show profile in `.chrome-show-profile` keeps i
 
 AirPods add about 150–250 ms of Bluetooth delay. You will hear your own voice boom back late, which can make you stumble over words. Noise cancellation helps. A wired or USB mic cuts the delay to about 10 ms. The mouth stays in sync either way, because it follows the speaker output and not your voice.
 
-The app cuts everything below 80 Hz from the mic, before the pitch shift and bass boost. This cut removes mains hum and rumble, which a wired mic picks up more than AirPods do. The gate silences mic noise between words. But noise under your voice still plays, and the reverb carries it for a moment after you stop. If you still hear a buzz while you speak, it comes in with the mic signal. Keep the mic cable away from power cables and the projector.
+The app cuts everything below 120 Hz from the mic, before the pitch shift and bass boost. This cut removes the rumble of breath and plosives hitting the mic, which a wired mic picks up more than AirPods do. The gate silences mic noise between words. But noise under your voice still plays, and the reverb carries it for a moment after you stop. If you still hear a buzz while you speak, it comes in with the mic signal. Keep the mic cable away from power cables and the projector.
 
 ## Sound effects
 

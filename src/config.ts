@@ -95,8 +95,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sfxVolume: 0.25,
   fireBase: 0.35,
   pitch: 0.85,
-  reverbWet: 0.65,
-  gate: 0.008,
+  reverbWet: 0.4,
+  gate: 0.004,
   sensitivity: 0.08,
   headScale: 1.57,
   headY: -0.39,
@@ -128,10 +128,11 @@ export const VOICE = {
   bassBoostDb: 6,
   bassBoostHz: 220,
   /**
-   * Cuts mains hum (60 Hz) and rumble before the bass boost amplifies them. The gate hides them in
-   * silence, but they buzz under the voice and its reverb. Two filters make a steep 24 dB/octave cut.
+   * Cuts breath, plosive and handling rumble before the bass boost amplifies it. The gate hides it in
+   * silence, but it buzzes under the voice and its reverb. Two filters make a steep 24 dB/octave cut.
+   * Chosen by ear on Oct 29 against 80 Hz, with the wired mic. It thins the lowest notes of a ~105 Hz voice a little.
    */
-  lowCutHz: 80,
+  lowCutHz: 120,
 };
 
 export const LIPSYNC = {
