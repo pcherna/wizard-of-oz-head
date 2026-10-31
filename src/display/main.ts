@@ -252,6 +252,10 @@ addEventListener('keydown', (e) => {
     panel.toggle();
     return;
   }
+  if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    panel.toggleCentered();
+    return;
+  }
   if (e.key === 'f' || e.key === 'F') {
     enterFullscreen().catch(() => {});
     return;
@@ -274,6 +278,7 @@ addEventListener('keydown', (e) => {
     if (e.key === 'u' || e.key === 'U') return projection.toggleFlipped();
     if (e.key === 'k' || e.key === 'K') return projection.toggleHandles();
     if ((e.key === 'r' || e.key === 'R') && projection.handlesVisible) return projection.resetKeystone();
+    if ((e.key === 'c' || e.key === 'C') && projection.handlesVisible) return projection.insetKeystone();
   }
   if (MIC_TOGGLE_KEYS.includes(e.key)) {
     // F5 would reload the page and Esc would leave fullscreen, so always swallow them.

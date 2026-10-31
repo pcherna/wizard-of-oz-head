@@ -49,6 +49,8 @@
         padding: 12px 16px; font: 13px/1.4 system-ui, sans-serif; color: #cfc; background: rgba(10, 20, 10, 0.92);
         border: 1px solid #3a5; border-radius: 8px; cursor: auto;
       }
+      /* M centers the panel, for a screen that crops its edges. */
+      #setup.centered { top: 50%; right: auto; left: 50%; transform: translate(-50%, -50%); }
       #setup h2 { margin: 0 0 8px; font-size: 15px; }
       #setup small { color: #8a8; font-weight: normal; }
       #setup label { display: grid; grid-template-columns: 120px 1fr 44px; align-items: center; gap: 6px; margin: 6px 0; }
@@ -71,7 +73,7 @@
     <div id="error" hidden></div>
     <div id="keystone" hidden>
       <div class="corner"></div><div class="corner"></div><div class="corner"></div><div class="corner"></div>
-      <div id="keystoneHelp">Drag the corners to square the picture. R resets. U flips. K hides the corners.</div>
+      <div id="keystoneHelp">Drag the corners to square the picture. R resets. C pulls them in. U flips. K hides the corners.</div>
     </div>
     <script type="module" src="/src/display/main.ts"></script>
   </body>

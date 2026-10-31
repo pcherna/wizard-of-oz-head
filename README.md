@@ -40,12 +40,14 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | `b`, `.`, `3` | Random dog trick |
 | `F5`, `Esc` | Mute or unmute the mic |
 | `s` | Setup panel |
+| `m` | Move the setup panel between its corner and the center of the screen |
 | `f` | Back to fullscreen |
 | `u` | Flip the picture upside down |
 | `k` | Show or hide the keystone handles |
 | `a` | Play the last dog trick again, for testing |
 | `n` | Play the next autopilot trick, for testing |
 | `r` | Reset the keystone, while the handles show |
+| `c` | Pull the keystone corners in to a quarter of the way from each edge, while the handles show |
 
 Most presentation clickers send PageUp and PageDown. Their third button sends `b` or `.`. The setup panel shows the last key pressed. If your clicker sends something else, add the key to `KEY_MAP` in `src/config.ts`, or to `MIC_TOGGLE_KEYS` for muting.
 
@@ -132,6 +134,8 @@ If the projector sits off-angle, the picture on the wall is a tilted shape inste
 3. Press K again to hide the handles.
 
 To go back to the uncorrected picture, press K, then press R.
+
+If the screen crops its edges, you can't see the handles in the corners. Press K, then press C. The corners move to a quarter of the way in from each edge, so you can see all four. Then drag them out to the wall's corners. If the setup panel is cut off too, press M to move it to the center of the screen. Press M again to move it back.
 
 The corners save with the other settings, so they survive a reload and a server restart. They're fractions of the screen, so they also survive a change of resolution. The lightning flash follows the corrected shape, so it never lights the wall outside the picture.
 

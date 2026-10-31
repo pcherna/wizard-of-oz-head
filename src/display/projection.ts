@@ -3,6 +3,8 @@ import type { SettingsStore } from '../settings';
 
 type Corners = Settings['keystone'];
 const SQUARE = DEFAULT_SETTINGS.keystone;
+/** Corners pulled in to a quarter of the way from each edge, so all four show on a screen that crops its edges. */
+const INSET: Corners = [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]];
 
 /**
  * Fits the picture to the wall. Flip turns the whole page 180°, for a projector mounted upside down.
@@ -37,6 +39,10 @@ export class Projection {
 
   resetKeystone() {
     this.store.update({ keystone: SQUARE });
+  }
+
+  insetKeystone() {
+    this.store.update({ keystone: INSET });
   }
 
   /** The saved corners, or square if the saved value is damaged. */

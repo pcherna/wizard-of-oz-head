@@ -140,6 +140,11 @@ export class SetupPanel {
     if (!this.el.hidden) this.refreshDevices();
   }
 
+  /** Moves the panel between its corner and dead center, for a screen that crops its edges. */
+  toggleCentered() {
+    this.el.classList.toggle('centered');
+  }
+
   get visible() {
     return !this.el.hidden;
   }
