@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, STEAM_TAPS_FOR_LIGHTNING, STEAM_TAP_GAP_SEC, type EffectName, type Settings } from '../config';
+import { KEY_MAP, LIPSYNC, MIC_TOGGLE_KEYS, VOICE, OZ_SCULPT_DEFAULTS, REMOTE_SETTING_KEYS, STEAM_TAPS_FOR_LIGHTNING, STEAM_TAP_GAP_SEC, TRICK_NO_REPEAT, type EffectName, type Settings } from '../config';
 import { SettingsStore } from '../settings';
 import { RelaySocket } from '../control/socket';
 import { Voice } from '../audio/voice';
@@ -99,7 +99,8 @@ if (import.meta.env.DEV) Object.assign(window, { wizard: { get head() { return h
 let clock = 0;
 let steamTaps = 0;
 let lastSteamTap = -Infinity;
-let nextTrick = 0;
+/** The trick button's last few picks, oldest first. A new pick skips these. */
+let recentTricks: Trick[] = [];
 
 /** Clicker and remote triggers. Shout-driven flares skip this, so they stay silent under the voice. */
 function trigger(effect: EffectName) {
@@ -121,13 +122,15 @@ function trigger(effect: EffectName) {
   } else if (effect === 'lightning') {
     lightning.strike(clock);
   } else if (head) {
-    // Each press plays the next trick, skipping autopilot-only tricks and tricks this head can't do.
-    const tricks = TRICKS.filter((tr) => !tr.autopilot && canDo(tr));
-    playTrick(tricks[nextTrick++ % tricks.length]);
+    // Each press plays a random trick, skipping recent picks, autopilot-only and benched tricks, and tricks this head can't do.
+    const choices = TRICKS.filter((tr) => !tr.autopilot && !tr.benched && canDo(tr) && !recentTricks.includes(tr));
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    recentTricks = [...recentTricks, pick].slice(-TRICK_NO_REPEAT);
+    playTrick(pick);
   }
 }
 
-/** Cues still waiting from the current trick. A new trick cancels them, so skipping past a lunge doesn't strike lightning. */
+/** Cues still waiting from the current trick. A new trick cancels them, so cutting a trick short doesn't fire its leftover cues. */
 let cueTimers: number[] = [];
 
 /** Only the Labrador has a separate tongue, canines, lifting ears and a measured nose, for the tricks that need them. */
@@ -181,7 +184,7 @@ function noteActivity() {
 function autopilot() {
   const wait = store.value.autopilotSec;
   if (wait <= 0 || !head || clock - lastActivity < wait * autoJitter) return;
-  const choices = TRICKS.filter((tr) => tr.autopilot && tr !== lastAuto && canDo(tr));
+  const choices = TRICKS.filter((tr) => tr.autopilot && !tr.benched && tr !== lastAuto && canDo(tr));
   lastAuto = choices[Math.floor(Math.random() * choices.length)];
   playTrick(lastAuto);
   noteActivity();
@@ -253,7 +256,7 @@ addEventListener('keydown', (e) => {
     enterFullscreen().catch(() => {});
     return;
   }
-  // Testing: play the last trick again, without moving the trick button's place in its cycle.
+  // Testing: play the last trick again. It doesn't count as a trick-button pick.
   if ((e.key === 'a' || e.key === 'A') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     noteActivity();
     if (lastTrick) playTrick(lastTrick);
@@ -262,7 +265,7 @@ addEventListener('keydown', (e) => {
   // Testing: play the next autopilot trick, in order, without waiting for autopilot.
   if ((e.key === 'n' || e.key === 'N') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     noteActivity();
-    const autos = TRICKS.filter((tr) => tr.autopilot && canDo(tr));
+    const autos = TRICKS.filter((tr) => tr.autopilot && !tr.benched && canDo(tr));
     if (autos.length) playTrick(autos[nextAuto++ % autos.length]);
     return;
   }

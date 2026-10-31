@@ -137,6 +137,8 @@ export interface Trick {
   clip?: 'first' | 'instead';
   /** Small enough for autopilot to play on its own. It then plays only on autopilot, never from the trick button. */
   autopilot?: boolean;
+  /** Kept in the code, but never picked by the trick button or autopilot. `?trick=<name>` still shows it. */
+  benched?: boolean;
   /** dir is +1 or -1, picked at random each time, for moves that go one way. */
   pose(t: number, p: Pose, dir: number): void;
 }
@@ -673,6 +675,7 @@ export const TRICKS: Trick[] = [
     name: 'lunge',
     seconds: 1.9,
     tongue: false,
+    benched: true,
     cues: [[0.22, 'lightning']],
     pose(t, p) {
       p.lunge = keys(t, [[0, 0], [0.12, -0.25], [0.26, 2.2], [0.75, 2.0], [1.6, 0]]);
@@ -782,6 +785,7 @@ export const TRICKS: Trick[] = [
     name: 'melt',
     seconds: 8.8,
     tongue: false,
+    benched: true,
     clip: 'instead',
     cues: [[0.3, 'steam'], [1.8, 'steam'], [3.6, 'steam'], [MELT_DOWN, 'steam'], [5.8, 'steam'], [6.6, 'steam']],
     pose(t, p, dir) {

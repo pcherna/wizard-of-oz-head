@@ -37,7 +37,7 @@ Set `WIZARD_DISPLAY_X` to any x coordinate on the projector's display, from Syst
 | --- | --- |
 | `PageDown`, `Right arrow`, `1` | Fire flare |
 | `PageUp`, `Left arrow`, `2` | Steam burst. Four quick taps strike lightning |
-| `b`, `.`, `3` | Next dog trick |
+| `b`, `.`, `3` | Random dog trick |
 | `F5`, `Esc` | Mute or unmute the mic |
 | `s` | Setup panel |
 | `f` | Back to fullscreen |
@@ -61,26 +61,29 @@ A clicker has only three buttons, so lightning hides behind the steam button. Ta
 
 ## Dog tricks
 
-Each press of the trick button plays the next trick in this order, then starts over:
+Each press of the trick button plays one of these tricks at random. It never picks any of its last four picks. To change that count, edit `TRICK_NO_REPEAT` in `src/config.ts`.
 
-1. Treat: a dog biscuit balances on the nose while a clock ticks, and the head trembles with the effort of waiting. Then it flips the biscuit up, catches it, and crunches it, scattering crumbs.
-2. Wizard: "We're off to see the Wizard" on a kazoo, over an oom-pah bass. The head bobs side to side on the beat, the ears flap, and it lifts its nose on the last note.
-3. Rainbow: a rainbow arcs across the sky behind the dog as a music box plays "Somewhere over the rainbow, way up high". The dog gazes up dreamily, and one ear rises on "way up high".
-4. Doorbell: a "ding-dong" from one side. Both ears shoot up, the head snaps toward the door, and the dog gives two happy "boof"s and a hopeful tilt.
-5. Firefly: a glowing firefly buzzes in and loops around the dog's face, and the head follows it. Snap! Gulp. The muzzle blinks from inside like a lantern, then a burp lets out a puff of sparks.
-6. Pumpkin: the head turns into a grooved orange jack-o'-lantern. A match strikes, and a candle lights inside the mouth and eyes. The dog grins, then blows its own candle out.
-7. Shake: a wet-dog shake that flings water drops off its ears and head, with flapping ears and a jingling collar tag. The water puts the fire out with a hiss and a puff of steam, and it relights a moment later.
-8. Sneeze: rears back twice, then sneezes "choo!" so hard the steam vents blast a cloud wider than a normal burst.
-9. Colors: "a horse of a different color." The head turns purple, yellow and red, then green again, with a harp sweep at each change.
-10. Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
-11. Squirrel: snaps its head to the side and leans in, stretching its neck, and stares. It can play a clip first, as described below.
-12. Bubble: blows a pink chewing-gum bubble that grows with each breath and pops in its face, scattering bits of gum.
-13. Lunge: a jump scare. The head rears back, then lunges at the audience with a "WOOF!" as the lightning strikes.
-14. Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
-15. Vampire: the head lowers, then rises with blood-red eyes and the upper canines growing into long fangs, to the opening of Bach's Toccata and Fugue in D minor on a pipe organ.
-16. Monkeys: flying monkeys swoop across the stage in front of the dog, screeching. The dog looks up and follows them, mouth open.
-17. Melt: the witch cries "Look what you've done! I'm melting! Melting!" as the head writhes and drips down into a puddle in clouds of steam. It lies there through "Oh, what a world", then rises back up whole.
-18. Spin: turns its head all the way around, like a possessed doll.
+- Treat: a dog biscuit balances on the nose while a clock ticks, and the head trembles with the effort of waiting. Then it flips the biscuit up, catches it, and crunches it, scattering crumbs.
+- Wizard: "We're off to see the Wizard" on a kazoo, over an oom-pah bass. The head bobs side to side on the beat, the ears flap, and it lifts its nose on the last note.
+- Rainbow: a rainbow arcs across the sky behind the dog as a music box plays "Somewhere over the rainbow, way up high". The dog gazes up dreamily, and one ear rises on "way up high".
+- Doorbell: a "ding-dong" from one side. Both ears shoot up, the head snaps toward the door, and the dog gives two happy "boof"s and a hopeful tilt.
+- Firefly: a glowing firefly buzzes in and loops around the dog's face, and the head follows it. Snap! Gulp. The muzzle blinks from inside like a lantern, then a burp lets out a puff of sparks.
+- Pumpkin: the head turns into a grooved orange jack-o'-lantern. A match strikes, and a candle lights inside the mouth and eyes. The dog grins, then blows its own candle out.
+- Shake: a wet-dog shake that flings water drops off its ears and head, with flapping ears and a jingling collar tag. The water puts the fire out with a hiss and a puff of steam, and it relights a moment later.
+- Sneeze: rears back twice, then sneezes "choo!" so hard the steam vents blast a cloud wider than a normal burst.
+- Colors: "a horse of a different color." The head turns purple, yellow and red, then green again, with a harp sweep at each change.
+- Howl: swings its nose up toward the sky while turning to a random side, then howls as the fire flares.
+- Squirrel: snaps its head to the side and leans in, stretching its neck, and stares. It can play a clip first, as described below.
+- Bubble: blows a pink chewing-gum bubble that grows with each breath and pops in its face, scattering bits of gum.
+- Ghost: fades into a pale, see-through ghost with glowing eyes and drifts up, with a theremin "wooOOoo", then comes back.
+- Vampire: the head lowers, then rises with blood-red eyes and the upper canines growing into long fangs, to the opening of Bach's Toccata and Fugue in D minor on a pipe organ.
+- Monkeys: flying monkeys swoop across the stage in front of the dog, screeching. The dog looks up and follows them, mouth open.
+- Spin: turns its head all the way around, like a possessed doll.
+
+Two tricks are benched. Their code stays, but the trick button and autopilot never pick them. To check one, use `?trick=lunge` or `?trick=melt`, described below. To bring one back, remove `benched: true` from it in `src/display/tricks.ts`.
+
+- Lunge: a jump scare. The head rears back, then lunges at the audience with a "WOOF!" as the lightning strikes.
+- Melt: the witch cries "Look what you've done! I'm melting! Melting!" as the head writhes and drips down into a puddle in clouds of steam. It lies there through "Oh, what a world", then rises back up whole.
 
 These play only on autopilot, never from the trick button. See Autopilot below.
 
@@ -94,7 +97,7 @@ These play only on autopilot, never from the trick button. See Autopilot below.
 - Scratch: a scratch in the sweet spot behind one ear. The head leans into it with its eyes shut, that ear lifts a little, and the scratching goes "shhhh" faster and faster.
 - Blep: the tongue thrusts out once and goes straight back in.
 
-A trick takes 1.3 to 8.8 seconds. Pressing again during a trick starts the next one at once, and the last trick's sounds fade out in about a tenth of a second. Unmuting the mic stops any trick: the head returns to rest in 0.3 seconds, and the trick's sounds fade out. Fire, steam and lightning carry on. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
+A trick takes 1.2 to 7.8 seconds. Pressing again during a trick starts the next one at once, and the last trick's sounds fade out in about a tenth of a second. Unmuting the mic stops any trick: the head returns to rest in 0.3 seconds, and the trick's sounds fade out. Fire, steam and lightning carry on. The performer can keep talking during a trick, but tricks that open the mouth take over the jaw while they run.
 
 Only the Labrador has a tongue, canine teeth and ears that lift, so the other heads skip perk, doorbell, blep, lick, pant and vampire. Only the Labrador has the top of its nose measured, so only it does the treat. The model has no back to its skull. During the spin, the inside of the head is painted a smooth green, so the back reads as solid.
 
@@ -110,7 +113,7 @@ The nap snores with recordings from `public/sfx/snore-1.wav`, `snore-2.wav` and 
 
 ### Autopilot
 
-When nobody presses a button and nobody speaks for 45 seconds, the dog does a small trick on its own: lick, tilt, pant, hiccups, wink, nap, perk, scratch or blep. These play only on autopilot, never from the trick button. To test them, press `n`. Each press plays the next autopilot trick in order. It never repeats the trick it just did, and the wait varies by up to 30% so the tricks don't come like clockwork. Autopilot never plays the big set pieces, such as the melt, monkeys or ghost. Those stay under your control. Set the wait with the Autopilot slider in the setup panel. 0 turns autopilot off. Autopilot tricks don't move the trick button's place in its cycle.
+When nobody presses a button and nobody speaks for 45 seconds, the dog does a small trick on its own: lick, tilt, pant, hiccups, wink, nap, perk, scratch or blep. These play only on autopilot, never from the trick button. To test them, press `n`. Each press plays the next autopilot trick in order. It never repeats the trick it just did, and the wait varies by up to 30% so the tricks don't come like clockwork. Autopilot never plays the big set pieces, such as the monkeys, ghost or spin. Those stay under your control. Set the wait with the Autopilot slider in the setup panel. 0 turns autopilot off. Autopilot tricks don't count as trick-button picks.
 
 ## Upside-down projector
 

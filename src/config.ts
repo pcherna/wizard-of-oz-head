@@ -23,6 +23,9 @@ export const KEY_MAP: Record<string, EffectName> = {
 export const STEAM_TAPS_FOR_LIGHTNING = 4;
 export const STEAM_TAP_GAP_SEC = 0.6;
 
+/** The trick button picks at random, but never one of its last this many picks. Keep it below the trick count of the head with the fewest tricks. */
+export const TRICK_NO_REPEAT = 4;
+
 /** Keys that mute or unmute the mic. A clicker's "start show" button sends F5 and Esc in turn. */
 export const MIC_TOGGLE_KEYS = ['F5', 'Escape'];
 
