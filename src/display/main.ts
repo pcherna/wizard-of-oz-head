@@ -66,8 +66,9 @@ function applyBrightness(brightness: number) {
   lightning.brightness = brightness;
 }
 applyBrightness(store.value.brightness);
-const panel = new SetupPanel(store);
-const projection = new Projection(document.querySelector('#picture')!, document.querySelector('#keystone')!, store);
+const panelLayer = document.querySelector<HTMLElement>('#panelLayer')!;
+const panel = new SetupPanel(store, panelLayer);
+const projection = new Projection([document.querySelector('#picture')!, panelLayer], document.querySelector('#keystone')!, store);
 panel.onTestTone = () => voice?.testTone();
 const socket = new RelaySocket();
 let socketUp = false;

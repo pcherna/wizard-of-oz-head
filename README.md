@@ -137,7 +137,7 @@ To go back to the uncorrected picture, press K, then press R.
 
 If the screen crops its edges, you can't see the handles in the corners. Press K, then press C. The corners move to a quarter of the way in from each edge, so you can see all four. Then drag them out to the wall's corners. If the setup panel is cut off too, press M to move it to the center of the screen. Press M again to move it back.
 
-The corners save with the other settings, so they survive a reload and a server restart. They're fractions of the screen, so they also survive a change of resolution. The lightning flash follows the corrected shape, so it never lights the wall outside the picture.
+The corners save with the other settings, so they survive a reload and a server restart. They're fractions of the screen, so they also survive a change of resolution. The lightning flash and the setup panel follow the corrected shape, so the flash never lights the wall outside the picture and the panel stays on the wall.
 
 The correction costs no frame rate. Any correction softens the picture a little, and the narrowed side loses some resolution. If you can, aim the projector straight instead. An uncorrected picture is pixel-exact.
 

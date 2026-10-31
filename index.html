@@ -13,6 +13,8 @@
       html.flipped body { transform: rotate(180deg); }
       /* Keystone warps the picture and the lightning flash together, so the flash stays inside the picture. */
       #picture { position: fixed; inset: 0; transform-origin: 0 0; }
+      /* The setup panel gets the same warp, in its own layer so it stays above the start screen. */
+      #panelLayer { position: fixed; inset: 0; transform-origin: 0 0; pointer-events: none; }
       #stage { display: block; width: 100vw; height: 100vh; }
       #flash { position: fixed; inset: 0; background: #eef4ff; opacity: 0; pointer-events: none; }
       #start {
@@ -45,9 +47,10 @@
         font: 14px/1.4 system-ui, sans-serif; color: #fdd; background: #600; border-radius: 6px;
       }
       #setup {
-        position: fixed; top: 16px; right: 16px; width: 360px; max-height: calc(100vh - 32px); overflow: auto;
+        position: fixed; top: 16px; right: 16px; width: 394px; max-height: calc(100vh - 32px); overflow: auto;
+        box-sizing: border-box; /* the height cap counts padding and border, so the panel fits the screen */
         padding: 12px 16px; font: 13px/1.4 system-ui, sans-serif; color: #cfc; background: rgba(10, 20, 10, 0.92);
-        border: 1px solid #3a5; border-radius: 8px; cursor: auto;
+        border: 1px solid #3a5; border-radius: 8px; cursor: auto; pointer-events: auto;
       }
       /* M centers the panel, for a screen that crops its edges. */
       #setup.centered { top: 50%; right: auto; left: 50%; transform: translate(-50%, -50%); }
@@ -71,6 +74,7 @@
     </div>
     <div id="start">Click or press a clicker button to summon the Wizard</div>
     <div id="error" hidden></div>
+    <div id="panelLayer"></div>
     <div id="keystone" hidden>
       <div class="corner"></div><div class="corner"></div><div class="corner"></div><div class="corner"></div>
       <div id="keystoneHelp">Drag the corners to square the picture. R resets. C pulls them in. U flips. K hides the corners.</div>

@@ -51,7 +51,8 @@ export class SetupPanel {
   onTestTone: () => void = () => {};
   private remoteUrl = '(server offline)';
 
-  constructor(private store: SettingsStore) {
+  /** `parent` is where the panel goes. */
+  constructor(private store: SettingsStore, parent: HTMLElement) {
     this.el = document.createElement('div');
     this.el.id = 'setup';
     this.el.hidden = true;
@@ -76,7 +77,7 @@ export class SetupPanel {
       <pre class="readout"></pre>
       <p class="credit">Head scan: "Infinite" by Lee Perry-Smith, CC BY 3.0, via three.js.<br>
         Labrador: "Dog" by all of life, CC BY 4.0, via Sketchfab.</p>`;
-    document.body.append(this.el);
+    parent.append(this.el);
 
     this.inputSel = this.el.querySelector('[data-k=inputId]')!;
     this.outputSel = this.el.querySelector('[data-k=outputId]')!;

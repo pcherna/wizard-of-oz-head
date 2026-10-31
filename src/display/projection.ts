@@ -8,14 +8,14 @@ const INSET: Corners = [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]];
 
 /**
  * Fits the picture to the wall. Flip turns the whole page 180°, for a projector mounted upside down.
- * Keystone warps the picture so each corner lands where it was dragged, for a projector off-angle.
+ * Keystone warps the picture and the setup panel so each corner lands where it was dragged, for a projector off-angle.
  * Both save with the other settings.
  */
 export class Projection {
   private handles: HTMLElement[];
 
-  /** `picture` holds everything to warp. `ui` holds the four corner handles and their help line. */
-  constructor(private picture: HTMLElement, private ui: HTMLElement, private store: SettingsStore) {
+  /** `warped` are full-window layers that hold everything to warp. `ui` holds the four corner handles and their help line. */
+  constructor(private warped: HTMLElement[], private ui: HTMLElement, private store: SettingsStore) {
     this.handles = [...ui.querySelectorAll<HTMLElement>('.corner')];
     this.handles.forEach((handle, i) => this.makeDraggable(handle, i));
     store.subscribe((changed) => {
@@ -61,7 +61,8 @@ export class Projection {
     const isSquare = corners.every(([x, y], i) => x === SQUARE[i][0] && y === SQUARE[i][1]);
     // Square means no transform at all, so the picture stays pixel-exact.
     const transform = isSquare ? '' : keystoneMatrix(corners.map(([x, y]) => [x * w, y * h]), w, h);
-    if (transform !== null) this.picture.style.transform = transform; // null: corners in a line, keep the last shape
+    // null: corners in a line, keep the last shape
+    if (transform !== null) for (const layer of this.warped) layer.style.transform = transform;
     corners.forEach(([x, y], i) => {
       this.handles[i].style.left = `${x * w}px`;
       this.handles[i].style.top = `${y * h}px`;
