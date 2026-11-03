@@ -110,7 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 0.08,
   headScale: 1.57,
   headY: -0.39,
-  headVariant: 'oz',
+  headVariant: 'labrador',
   headShine: 0,
   headRim: 0.5,
   backdrop: 0.3,
